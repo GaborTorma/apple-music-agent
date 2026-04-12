@@ -3,7 +3,7 @@ import subprocess
 import os
 from dataclasses import dataclass
 
-import config
+from music_agent import config
 
 
 class ConversionError(Exception):

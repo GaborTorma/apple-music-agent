@@ -2,39 +2,52 @@
 
 ## Project overview
 
-Telegram bot that downloads YouTube audio, converts to AAC m4a, adds to Apple Music, waits for iCloud sync, then adds to a playlist. macOS only.
+Telegram bot that downloads audio from YouTube, SoundCloud, and Mixcloud, converts to AAC m4a, adds to Apple Music, waits for iCloud sync, then adds to a playlist. macOS only.
 
 ## Tech stack
 
 - Python 3.12+ with python-telegram-bot (async, long polling)
-- yt-dlp (CLI) — YouTube download
+- yt-dlp (CLI) — YouTube, SoundCloud, Mixcloud download
 - ffmpeg/ffprobe (CLI) — audio conversion
 - osascript/AppleScript — Apple Music control
 - python-dotenv — env management
 
 ## Architecture
 
-Modular pipeline: `bot.py` → `pipeline.py` → `downloader.py` → `converter.py` → `apple_music.py`
+Package-based structure under `music_agent/`. Entry point: `run.py`.
 
-Each module returns a dataclass result. Pipeline orchestrates steps with status callbacks.
+Pipeline: `bot.py` → `pipeline.py` → `downloaders/` → `converter.py` → `services/apple_music.py`
 
-## Key files
+Downloaders use inheritance: `BaseDownloader` (common yt-dlp logic) with platform subclasses (`YouTubeDownloader`, `SoundCloudDownloader`, `MixcloudDownloader`). Factory function `get_downloader(url)` selects the right one based on URL.
 
-- `bot.py` — Telegram bot entry point, async handler, YouTube URL regex
-- `pipeline.py` — Orchestrator, temp dir management, calls modules in sequence
-- `downloader.py` — yt-dlp wrapper, downloads audio + thumbnail + metadata
-- `converter.py` — ffmpeg wrapper, dynamic bitrate calculation, cover art embedding
-- `apple_music.py` — AppleScript integration (add to library, iCloud poll, playlist add)
-- `config.py` — All settings from .env + constants
+## Project structure
+
+```
+music_agent/
+├── __init__.py
+├── config.py              — All settings from .env + constants
+├── bot.py                 — Telegram bot, multi-platform URL matching
+├── pipeline.py            — Orchestrator, temp dir, downloader routing
+├── converter.py           — ffmpeg wrapper, dynamic bitrate, cover art
+├── downloaders/
+│   ├── __init__.py        — BaseDownloader, DownloadResult, get_downloader()
+│   ├── youtube.py         — YouTubeDownloader
+│   ├── soundcloud.py      — SoundCloudDownloader
+│   └── mixcloud.py        — MixcloudDownloader
+└── services/
+    ├── __init__.py
+    └── apple_music.py     — AppleScript integration
+```
 
 ## Important patterns
 
 - Dynamic bitrate: `min(192, floor(195MB * 8 * 0.95 / duration / 1000))` kbps
-- Converted files persist in `/Users/Shared/Music/` (not temp) — Apple Music needs the file to stay
+- `MUSIC_DIR` env var: if set, files persist there; if empty, files stay in temp dir
 - `add POSIX file` returns track reference → persistent ID extracted directly (no name-based search)
 - iCloud sync polling: 60s interval, 20 min timeout, continues on timeout
-- Pipeline always cleans up temp dir in `finally` block
+- Pipeline cleans up temp dir only when `MUSIC_DIR` is set (file already moved out)
 - Bot runs sync pipeline in `run_in_executor` to avoid blocking event loop
+- `get_downloader(url)` factory auto-selects downloader based on URL domain
 
 ## Gotchas
 
@@ -49,7 +62,7 @@ Each module returns a dataclass result. Pipeline orchestrates steps with status 
 
 ```bash
 # Run bot
-source .venv/bin/activate && python3 bot.py
+source .venv/bin/activate && python3 run.py
 
 # Install deps
 python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
@@ -60,7 +73,11 @@ brew install yt-dlp ffmpeg
 
 ## Configuration
 
-All in `.env`: `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`, `PLAYLIST_NAME` (default: Futás)
+All in `.env`:
+- `TELEGRAM_BOT_TOKEN` — bot API token (required)
+- `ALLOWED_USER_IDS` — comma-separated user IDs
+- `PLAYLIST_NAME` — target playlist (default: Futás)
+- `MUSIC_DIR` — persistent music directory (default: empty = temp dir)
 
 Constants in `config.py`: max bitrate 192kbps, max file size 195MB, min bitrate 64kbps, poll interval 60s, poll timeout 20min.
 

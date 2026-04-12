@@ -1,7 +1,7 @@
 import subprocess
 import time
 
-import config
+from music_agent import config
 
 
 class AppleMusicError(Exception):

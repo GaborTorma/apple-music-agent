@@ -1,6 +1,6 @@
 # telegram-to-apple-music
 
-Telegram bot that downloads audio from YouTube links, converts to AAC m4a with dynamic bitrate (max 192kbps/195MB), adds to Apple Music library, waits for iCloud Music Library sync, and adds to a configured playlist. Built for macOS with yt-dlp, ffmpeg, and AppleScript.
+Telegram bot that downloads audio from YouTube, SoundCloud, and Mixcloud links, converts to AAC m4a with dynamic bitrate (max 192kbps/195MB), adds to Apple Music library, waits for iCloud Music Library sync, and adds to a configured playlist. Built for macOS with yt-dlp, ffmpeg, and AppleScript.
 
 ## Requirements
 
@@ -47,6 +47,7 @@ Edit `.env`:
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 ALLOWED_USER_IDS=123456789
 PLAYLIST_NAME=Futás
+MUSIC_DIR=/Users/Shared/Music
 ```
 
 ### Get your Telegram user ID
@@ -66,18 +67,26 @@ PLAYLIST_NAME=Futás
 
 ```bash
 source .venv/bin/activate
-python3 bot.py
+python3 run.py
 ```
 
-Send a YouTube link to your bot on Telegram. The bot will:
+Send a YouTube, SoundCloud, or Mixcloud link to your bot on Telegram. The bot will:
 
-1. Download the audio (original vorbis/opus)
+1. Download the audio (original format)
 2. Convert to AAC m4a with dynamic bitrate calculation
 3. Add to Apple Music library
 4. Wait for iCloud Music Library sync (polls every 60s, max 20 min)
 5. Add to the configured playlist
 
 Status updates are sent back via Telegram at each step.
+
+## Supported platforms
+
+| Platform | Example URL |
+|---|---|
+| YouTube | `https://youtube.com/watch?v=...`, `https://youtu.be/...`, `https://music.youtube.com/watch?v=...` |
+| SoundCloud | `https://soundcloud.com/artist/track`, `https://on.soundcloud.com/...` |
+| Mixcloud | `https://www.mixcloud.com/artist/mix-name/` |
 
 ## Dynamic bitrate
 
@@ -96,8 +105,9 @@ If the calculated bitrate drops below 64 kbps, a warning is sent.
 | `TELEGRAM_BOT_TOKEN` | — | Telegram Bot API token |
 | `ALLOWED_USER_IDS` | — | Comma-separated Telegram user IDs |
 | `PLAYLIST_NAME` | `Futás` | Target Apple Music playlist name |
+| `MUSIC_DIR` | *(empty)* | Persistent music directory. If empty, files stay in temp dir |
 
-Additional settings in `config.py`:
+Additional settings in `music_agent/config.py`:
 
 | Setting | Default | Description |
 |---|---|---|
@@ -109,14 +119,19 @@ Additional settings in `config.py`:
 ## Project structure
 
 ```
-├── bot.py              # Telegram bot entry point
-├── pipeline.py         # Orchestrator
-├── downloader.py       # yt-dlp wrapper
-├── converter.py        # ffmpeg wrapper
-├── apple_music.py      # AppleScript integration
-├── config.py           # Configuration
-├── .env.example        # Example environment file
-└── requirements.txt    # Python dependencies
+├── run.py                          # Entry point
+├── music_agent/
+│   ├── config.py                   # Configuration (.env + constants)
+│   ├── bot.py                      # Telegram bot, multi-platform URL matching
+│   ├── pipeline.py                 # Orchestrator, downloader routing
+│   ├── converter.py                # ffmpeg wrapper, dynamic bitrate
+│   ├── downloaders/
+│   │   ├── __init__.py             # BaseDownloader, DownloadResult, factory
+│   │   ├── youtube.py              # YouTubeDownloader
+│   │   ├── soundcloud.py           # SoundCloudDownloader
+│   │   └── mixcloud.py             # MixcloudDownloader
+│   └── services/
+│       └── apple_music.py          # AppleScript integration
+├── .env.example
+└── requirements.txt
 ```
-
-Converted files are stored in `/Users/Shared/Music/`.

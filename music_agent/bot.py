@@ -4,8 +4,8 @@ import re
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-import config
-import pipeline
+from music_agent import config
+from music_agent import pipeline
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -13,9 +13,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-YOUTUBE_REGEX = re.compile(
-    r'(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/|music\.youtube\.com/watch\?v=)[\w\-]+'
-)
+# URL path segment: word chars, hyphens, dots, percent-encoded sequences (%XX)
+_PSEG = r'[\w\-%.~]+'
+
+URL_PATTERNS = {
+    "YouTube": re.compile(
+        r'(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/|music\.youtube\.com/watch\?v=)[\w\-]+'
+    ),
+    "SoundCloud": re.compile(
+        rf'(https?://)?(www\.|m\.)?(soundcloud\.com/{_PSEG}/{_PSEG}|on\.soundcloud\.com/{_PSEG})'
+    ),
+    "Mixcloud": re.compile(
+        rf'(https?://)?(www\.)?mixcloud\.com/{_PSEG}/{_PSEG}/?'
+    ),
+}
 
 
 def _is_allowed(user_id: int) -> bool:
@@ -28,7 +39,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"A te user ID-d: {user_id}\nAdd hozzá az ALLOWED_USER_IDS-hez a .env fájlban.")
         return
     await update.message.reply_text(
-        "Küldj egy YouTube linket és hozzáadom a Futás playlisthez!"
+        "Küldj egy YouTube, SoundCloud vagy Mixcloud linket és hozzáadom a Futás playlisthez!"
     )
 
 
@@ -37,16 +48,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = update.message.text or ""
-    match = YOUTUBE_REGEX.search(text)
-    if not match:
-        await update.message.reply_text("Nem találtam YouTube linket az üzenetben.")
+
+    url = None
+    platform = None
+    for name, pattern in URL_PATTERNS.items():
+        match = pattern.search(text)
+        if match:
+            url = match.group(0)
+            platform = name
+            break
+
+    if not url:
+        await update.message.reply_text("Nem találtam támogatott linket az üzenetben.")
         return
 
-    url = match.group(0)
     if not url.startswith("http"):
         url = "https://" + url
 
-    status_msg = await update.message.reply_text("Feldolgozás indítása...")
+    status_msg = await update.message.reply_text(f"Feldolgozás indítása ({platform})...")
 
     async def on_status(msg: str):
         try:
@@ -55,7 +74,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     try:
-        # Run pipeline in a thread to not block the event loop
         import asyncio
         import functools
 
@@ -69,14 +87,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         loop = asyncio.get_event_loop()
         result, statuses = await loop.run_in_executor(None, sync_pipeline)
 
-        # Send intermediate statuses that were collected
         for s in statuses[:-1] if statuses else []:
             try:
                 await status_msg.edit_text(s)
             except Exception:
                 pass
 
-        # Final success message
         sync_icon = "" if result.icloud_synced else " (iCloud sync timeout)"
         await status_msg.edit_text(
             f"Kész! Hozzáadva a '{config.PLAYLIST_NAME}' playlisthez!\n"

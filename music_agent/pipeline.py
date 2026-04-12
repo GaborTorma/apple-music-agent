@@ -4,12 +4,10 @@ import shutil
 from dataclasses import dataclass
 from typing import Callable
 
-MUSIC_DIR = "/Users/Shared/Music"
-
-import config
-import downloader
-import converter
-import apple_music
+from music_agent import config
+from music_agent.downloaders import get_downloader
+from music_agent import converter
+from music_agent.services import apple_music
 
 
 class PipelineError(Exception):
@@ -36,9 +34,10 @@ def run(
 
     tmp_dir = tempfile.mkdtemp(prefix="music_agent_")
     try:
-        # Step 1: Download
+        # Step 1: Download (auto-selects downloader based on URL)
         status("Letöltés indítása...")
-        dl_result = downloader.download(url, tmp_dir)
+        dl = get_downloader(url)
+        dl_result = dl.download(url, tmp_dir)
 
         # Step 2: Convert
         status(f"Konvertálás m4a-ba ({dl_result.title})...")
@@ -57,10 +56,13 @@ def run(
                 f"a hosszú időtartam miatt"
             )
 
-        # Step 2.5: Move m4a to persistent location
-        os.makedirs(MUSIC_DIR, exist_ok=True)
-        final_m4a = os.path.join(MUSIC_DIR, os.path.basename(conv_result.m4a_path))
-        shutil.move(conv_result.m4a_path, final_m4a)
+        # Step 2.5: Move m4a to persistent location (if configured)
+        if config.MUSIC_DIR:
+            os.makedirs(config.MUSIC_DIR, exist_ok=True)
+            final_m4a = os.path.join(config.MUSIC_DIR, os.path.basename(conv_result.m4a_path))
+            shutil.move(conv_result.m4a_path, final_m4a)
+        else:
+            final_m4a = conv_result.m4a_path
 
         # Step 3: Add to Apple Music from persistent location
         status("Hozzáadás az Apple Music-hoz...")
@@ -86,4 +88,6 @@ def run(
         )
 
     finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+        if config.MUSIC_DIR:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        # If no MUSIC_DIR, keep temp dir — Apple Music references the file there
