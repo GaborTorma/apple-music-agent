@@ -84,12 +84,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = update.message.text or ""
 
+    url, platform = _find_url(text)
+
     # Check if user is editing a field for a pending request
     editing = context.user_data.get("editing")
-    if editing and not _find_url(text):
+    if editing and not url:
         return await _handle_field_edit(update, context, text)
-
-    url, platform = _find_url(text)
     if not url:
         await update.message.reply_text("Nem találtam támogatott linket az üzenetben.")
         return
