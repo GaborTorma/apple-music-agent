@@ -52,10 +52,8 @@ MUSIC_DIR=/Users/Shared/Music
 
 ### Get your Telegram user ID
 
-1. Set any value for `ALLOWED_USER_IDS`
-2. Start the bot and send `/start`
-3. The bot replies with your user ID
-4. Update `.env` and restart
+1. Message [@userinfobot](https://t.me/userinfobot) on Telegram — it replies with your user ID
+2. Add it to `ALLOWED_USER_IDS` in `.env`
 
 ### Create a Telegram bot
 
@@ -70,15 +68,29 @@ source .venv/bin/activate
 python3 run.py
 ```
 
+For development with auto-reload:
+
+```bash
+watchfiles "python run.py"
+```
+
 Send a YouTube, SoundCloud, or Mixcloud link to your bot on Telegram. The bot will:
 
-1. Download the audio (original format)
-2. Convert to AAC m4a with dynamic bitrate calculation
-3. Add to Apple Music library
-4. Wait for iCloud Music Library sync (polls every 60s, max 20 min)
-5. Add to the configured playlist
+1. Extract metadata (artist, title) and show a confirmation prompt
+2. Accept with ✅ OK, or override by typing `Előadó – Cím`
+3. Download the audio (original format)
+4. Convert to AAC m4a with dynamic bitrate calculation
+5. Add to Apple Music library
+6. Wait for iCloud Music Library sync (polls every 60s, max 20 min)
+7. Add to the configured playlist
 
 Status updates are sent back via Telegram at each step.
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `/stop` | Cancel the running pipeline or pending confirmation |
 
 ## Supported platforms
 
