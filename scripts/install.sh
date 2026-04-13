@@ -79,6 +79,7 @@ done
 
 if [[ -d "$INSTALL_DIR/.git" ]]; then
     info "Repository already exists, pulling latest..."
+    git -C "$INSTALL_DIR" checkout -- .
     git -C "$INSTALL_DIR" pull --ff-only
 else
     info "Cloning repository..."

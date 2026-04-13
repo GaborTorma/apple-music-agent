@@ -41,6 +41,7 @@ fi
 # --- Pull latest ---
 
 info "Pulling latest code..."
+git -C "$INSTALL_DIR" checkout -- .
 git -C "$INSTALL_DIR" pull --ff-only
 
 # --- Update dependencies ---
