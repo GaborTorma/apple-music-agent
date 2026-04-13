@@ -1,6 +1,7 @@
 import os
 import tempfile
 import shutil
+import threading
 from dataclasses import dataclass
 from typing import Callable
 
@@ -11,6 +12,10 @@ from music_agent.services import apple_music
 
 
 class PipelineError(Exception):
+    pass
+
+
+class PipelineCancelled(Exception):
     pass
 
 
@@ -71,6 +76,7 @@ def run(
     on_status: Callable[[str], None] | None = None,
     title_override: str | None = None,
     artist_override: str | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> PipelineResult:
     """Run the full pipeline: download → convert → add to Apple Music → playlist."""
     header = None
@@ -78,12 +84,17 @@ def run(
     step_detail = ""
     completed = 0
 
+    def check_cancel():
+        if cancel_event and cancel_event.is_set():
+            raise PipelineCancelled("Leállítva")
+
     def emit(force: bool = False):
         if on_status:
             on_status(_format_status(header, current_step, step_detail, completed))
 
     def set_step(index: int, detail: str = ""):
         nonlocal current_step, step_detail, completed
+        check_cancel()
         completed = index
         current_step = index
         step_detail = detail
@@ -91,6 +102,7 @@ def run(
 
     def update_detail(detail: str):
         nonlocal step_detail
+        check_cancel()
         step_detail = detail
         emit()
 
@@ -103,7 +115,12 @@ def run(
         def on_dl_progress(pct: float):
             update_detail(f"{pct:.0f}%")
 
-        dl_result = dl.download(url, tmp_dir, on_progress=on_dl_progress)
+        try:
+            dl_result = dl.download(url, tmp_dir, on_progress=on_dl_progress, cancel_event=cancel_event)
+        except Exception:
+            if cancel_event and cancel_event.is_set():
+                raise PipelineCancelled("Leállítva")
+            raise
 
         # Apply overrides
         if title_override:
@@ -119,20 +136,27 @@ def run(
         def on_conv_progress(pct: float):
             update_detail(f"{pct:.0f}%")
 
-        conv_result = converter.convert(
-            audio_path=dl_result.audio_path,
-            cover_path=dl_result.cover_path,
-            title=dl_result.title,
-            artist=dl_result.artist,
-            duration_seconds=dl_result.duration_seconds,
-            output_dir=tmp_dir,
-            on_progress=on_conv_progress,
-        )
+        try:
+            conv_result = converter.convert(
+                audio_path=dl_result.audio_path,
+                cover_path=dl_result.cover_path,
+                title=dl_result.title,
+                artist=dl_result.artist,
+                duration_seconds=dl_result.duration_seconds,
+                output_dir=tmp_dir,
+                on_progress=on_conv_progress,
+                cancel_event=cancel_event,
+            )
+        except Exception:
+            if cancel_event and cancel_event.is_set():
+                raise PipelineCancelled("Leállítva")
+            raise
 
         if conv_result.low_bitrate_warning:
             update_detail(f"⚠ {conv_result.bitrate_kbps} kbps (alacsony)")
 
         # Step 1.5: Move m4a to persistent location (if configured)
+        check_cancel()
         if config.MUSIC_DIR:
             os.makedirs(config.MUSIC_DIR, exist_ok=True)
             final_m4a = os.path.join(config.MUSIC_DIR, os.path.basename(conv_result.m4a_path))
@@ -151,8 +175,13 @@ def run(
             update_detail(f"{_format_time(elapsed)} / {_format_time(timeout)}")
 
         icloud_synced = apple_music.wait_for_icloud_sync(
-            persistent_id, on_progress=on_sync_progress,
+            persistent_id, on_progress=on_sync_progress, cancel_event=cancel_event,
         )
+
+        # If cancelled during sync, remove the track from Apple Music
+        if cancel_event and cancel_event.is_set():
+            apple_music.remove_from_library(persistent_id)
+            raise PipelineCancelled("Leállítva")
 
         if not icloud_synced:
             update_detail("⚠ timeout")

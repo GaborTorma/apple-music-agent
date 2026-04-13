@@ -30,24 +30,45 @@ def add_to_library(m4a_path: str) -> str:
 def wait_for_icloud_sync(
     persistent_id: str,
     on_progress: 'Callable[[float, float], None] | None' = None,
+    cancel_event: 'threading.Event | None' = None,
 ) -> bool:
     """Poll iCloud Music Library status. Returns True if synced, False if timed out.
 
     on_progress(elapsed_seconds, timeout_seconds) is called each poll cycle.
     """
+    import threading
     start = time.time()
     synced_statuses = {"matched", "uploaded", "purchased", "loaded"}
 
     while time.time() - start < config.ICLOUD_POLL_TIMEOUT_SECONDS:
+        if cancel_event and cancel_event.is_set():
+            return False
         elapsed = time.time() - start
         if on_progress:
             on_progress(elapsed, config.ICLOUD_POLL_TIMEOUT_SECONDS)
         status = _get_cloud_status(persistent_id)
         if status and status.lower() in synced_statuses:
             return True
-        time.sleep(config.ICLOUD_POLL_INTERVAL_SECONDS)
+        # Sleep in small increments so cancel is responsive
+        for _ in range(config.ICLOUD_POLL_INTERVAL_SECONDS):
+            if cancel_event and cancel_event.is_set():
+                return False
+            time.sleep(1)
 
     return False
+
+
+def remove_from_library(persistent_id: str) -> None:
+    """Remove a track from Apple Music library by persistent ID."""
+    script = f'''
+    tell application "Music"
+        set matchingTracks to (every track whose persistent ID is "{persistent_id}")
+        if (count of matchingTracks) > 0 then
+            delete (first item of matchingTracks)
+        end if
+    end tell
+    '''
+    _run_applescript(script)
 
 
 def add_to_playlist(persistent_id: str, playlist_name: str) -> None:

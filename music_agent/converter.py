@@ -1,6 +1,7 @@
 import math
 import subprocess
 import os
+import threading
 from dataclasses import dataclass
 from typing import Callable
 
@@ -26,6 +27,7 @@ def convert(
     duration_seconds: float,
     output_dir: str,
     on_progress: Callable[[float], None] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> ConversionResult:
     """Convert audio to AAC m4a with dynamic bitrate to stay under size limit."""
     bitrate_kbps = _calculate_bitrate(duration_seconds)
@@ -68,6 +70,10 @@ def convert(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         for line in proc.stdout:
+            if cancel_event and cancel_event.is_set():
+                proc.terminate()
+                proc.wait()
+                raise ConversionError("Leállítva")
             if on_progress and line.startswith("out_time_us="):
                 try:
                     us = int(line.split("=")[1])

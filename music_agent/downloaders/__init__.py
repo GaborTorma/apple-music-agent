@@ -2,6 +2,7 @@ import json
 import re
 import subprocess
 import os
+import threading
 from dataclasses import dataclass
 from typing import Callable
 
@@ -27,11 +28,12 @@ class BaseDownloader:
         url: str,
         output_dir: str,
         on_progress: Callable[[float], None] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> DownloadResult:
         meta = self._extract_metadata(url)
         title, artist, duration = self._parse_metadata(meta)
 
-        audio_path = self._download_audio(url, output_dir, on_progress=on_progress)
+        audio_path = self._download_audio(url, output_dir, on_progress=on_progress, cancel_event=cancel_event)
         cover_path = self._download_thumbnail(url, output_dir)
 
         return DownloadResult(
@@ -68,6 +70,7 @@ class BaseDownloader:
         url: str,
         output_dir: str,
         on_progress: Callable[[float], None] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
         audio_path = os.path.join(output_dir, "audio.%(ext)s")
         cmd = [
@@ -85,6 +88,10 @@ class BaseDownloader:
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             )
             for line in proc.stdout:
+                if cancel_event and cancel_event.is_set():
+                    proc.terminate()
+                    proc.wait()
+                    raise DownloadError("Leállítva")
                 if on_progress and "[download]" in line:
                     m = re.search(r"(\d+\.?\d*)%", line)
                     if m:

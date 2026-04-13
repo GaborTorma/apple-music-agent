@@ -1,9 +1,10 @@
 import asyncio
 import logging
 import re
+import threading
 import time
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -15,6 +16,7 @@ from telegram.ext import (
 
 from music_agent import config
 from music_agent import pipeline
+from music_agent.pipeline import PipelineCancelled
 from music_agent.downloaders import get_metadata
 
 logging.basicConfig(
@@ -39,21 +41,39 @@ URL_PATTERNS = {
 }
 
 # Minimum interval between Telegram message edits (seconds)
-_MIN_EDIT_INTERVAL = 1.5
+_MIN_EDIT_INTERVAL = 1
 
 
 def _is_allowed(user_id: int) -> bool:
     return user_id in config.ALLOWED_USER_IDS
 
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not _is_allowed(user_id):
-        await update.message.reply_text(f"A te user ID-d: {user_id}\nAdd hozzá az ALLOWED_USER_IDS-hez a .env fájlban.")
+async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /stop command — cancel running pipeline or pending confirmation."""
+    if not _is_allowed(update.effective_user.id):
         return
-    await update.message.reply_text(
-        "Küldj egy YouTube, SoundCloud vagy Mixcloud linket és hozzáadom a Futás playlisthez!"
-    )
+
+    cancelled = False
+
+    # Cancel pending metadata confirmation
+    pending = context.user_data.pop("pending", None)
+    if pending:
+        cancelled = True
+        try:
+            await pending["status_msg"].edit_text("🛑 Leállítva!")
+        except Exception:
+            pass
+
+    # Cancel running pipeline
+    cancel_event = context.user_data.get("cancel_event")
+    if cancel_event:
+        cancelled = True
+        cancel_event.set()
+
+    if cancelled:
+        await update.message.reply_text("🛑 Leállítva!")
+    else:
+        await update.message.reply_text("Nincs futó folyamat.")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,6 +138,7 @@ async def handle_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await _run_with_metadata(
+        context,
         pending["url"],
         pending["title"],
         pending["artist"],
@@ -154,6 +175,7 @@ async def _handle_metadata_edit(update: Update, context: ContextTypes.DEFAULT_TY
         pass
 
     await _run_with_metadata(
+        context,
         pending["url"],
         title,
         artist,
@@ -162,8 +184,11 @@ async def _handle_metadata_edit(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
-async def _run_with_metadata(url, title, artist, status_msg, original_msg):
+async def _run_with_metadata(context, url, title, artist, status_msg, original_msg):
     """Run the pipeline with confirmed metadata."""
+    cancel_event = threading.Event()
+    context.user_data["cancel_event"] = cancel_event
+
     loop = asyncio.get_event_loop()
     last_edit_time = 0.0
     last_text = ""
@@ -201,7 +226,7 @@ async def _run_with_metadata(url, title, artist, status_msg, original_msg):
     try:
         result = await loop.run_in_executor(
             None,
-            lambda: _run_pipeline(url, title, artist, sync_status, flush_pending),
+            lambda: _run_pipeline(url, title, artist, sync_status, flush_pending, cancel_event),
         )
 
         try:
@@ -216,6 +241,13 @@ async def _run_with_metadata(url, title, artist, status_msg, original_msg):
             f"{sync_icon}"
         )
 
+    except PipelineCancelled:
+        logger.info("Pipeline cancelled by user")
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
     except Exception as e:
         logger.exception("Pipeline failed")
         try:
@@ -223,8 +255,11 @@ async def _run_with_metadata(url, title, artist, status_msg, original_msg):
         except Exception:
             pass
 
+    finally:
+        context.user_data.pop("cancel_event", None)
 
-def _run_pipeline(url, title, artist, sync_status, flush_pending):
+
+def _run_pipeline(url, title, artist, sync_status, flush_pending, cancel_event):
     """Run pipeline in executor thread, flushing pending status at the end."""
     try:
         return pipeline.run(
@@ -232,6 +267,7 @@ def _run_pipeline(url, title, artist, sync_status, flush_pending):
             on_status=sync_status,
             title_override=title,
             artist_override=artist,
+            cancel_event=cancel_event,
         )
     finally:
         flush_pending()
@@ -246,9 +282,17 @@ def _find_url(text: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+async def post_init(application: Application) -> None:
+    """Register bot commands with Telegram so they appear in the / menu."""
+    await application.bot.set_my_commands([
+        BotCommand("stop", "Folyamat leállítása"),
+    ])
+
+
 def main():
-    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start_command))
+    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
+    app.post_init = post_init
+    app.add_handler(CommandHandler("stop", stop_command))
     app.add_handler(CallbackQueryHandler(handle_confirm, pattern="^confirm_metadata$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
