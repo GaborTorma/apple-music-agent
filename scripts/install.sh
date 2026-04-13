@@ -42,13 +42,7 @@ fi
 if [[ -f "$SCRIPT_DIR/config.sh" ]]; then
     source "$SCRIPT_DIR/config.sh"
 else
-    # Fallback defaults
-    INSTALL_DIR="$HOME/Agents/Music"
-    SERVICE_LABEL="com.torma.ai.apple-music-agent"
-    PLIST_NAME="com.torma.ai.apple-music-agent.plist"
-    PLIST_PATH="$HOME/Library/LaunchAgents/$PLIST_NAME"
-    LOG_DIR="$HOME/Library/Logs/apple-music-agent"
-    REPO_URL="https://github.com/GaborTorma/apple-music-agent.git"
+    error "config.sh nem található: $SCRIPT_DIR/config.sh"
 fi
 
 # --- Helpers ---

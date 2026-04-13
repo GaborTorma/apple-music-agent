@@ -57,8 +57,8 @@ launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL"
 
 sleep 2
 
-if launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>&1 | grep -q '"pid"'; then
-    PID=$(launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>&1 | grep '"pid"' | awk '{print $NF}')
+if launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>&1 | grep -q 'pid = '; then
+    PID=$(launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>&1 | grep 'pid = ' | awk '{print $NF}')
     info "Service running (PID: $PID)"
 else
     echo ""
