@@ -89,6 +89,7 @@ All in `.env`:
 - `MUSIC_DIR` — persistent music directory (default: empty = temp dir)
 - `OLLAMA_HOST` — Ollama API URL (default: `http://localhost:11434`)
 - `OLLAMA_MODEL` — Ollama model name (default: `gemma4:e2b`)
+- `OLLAMA_API_KEY` — Ollama API key (optional, Bearer token sent if set)
 
 Constants in `config.py`: max bitrate 192kbps, max file size 195MB, min bitrate 64kbps, poll interval 60s, poll timeout 20min.
 

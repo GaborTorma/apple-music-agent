@@ -51,6 +51,7 @@ PLAYLIST_NAME=Futás
 MUSIC_DIR=/Users/Shared/Music
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=gemma4:e2b
+OLLAMA_API_KEY=your_api_key_here
 ```
 
 ### Get your Telegram user ID
@@ -123,6 +124,7 @@ If the calculated bitrate drops below 64 kbps, a warning is sent.
 | `MUSIC_DIR`          | _(empty)_                | Persistent music directory. If empty, files stay in temp dir |
 | `OLLAMA_HOST`        | `http://localhost:11434` | Ollama API URL                                               |
 | `OLLAMA_MODEL`       | `gemma4:e2b`             | Ollama model for metadata suggestions                        |
+| `OLLAMA_API_KEY`     | _(empty)_                | Ollama API key (optional, skips AI if not set)               |
 
 Additional settings in `music_agent/config.py`:
 

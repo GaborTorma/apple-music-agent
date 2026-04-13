@@ -17,3 +17,4 @@ ICLOUD_POLL_TIMEOUT_SECONDS = 20 * 60  # 20 minutes
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
+OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY", "")

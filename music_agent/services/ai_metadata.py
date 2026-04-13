@@ -82,10 +82,14 @@ def _call_ollama(prompt: str) -> str:
         },
     }).encode("utf-8")
 
+    headers = {"Content-Type": "application/json"}
+    if config.OLLAMA_API_KEY:
+        headers["Authorization"] = f"Bearer {config.OLLAMA_API_KEY}"
+
     req = urllib.request.Request(
         url,
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
 
