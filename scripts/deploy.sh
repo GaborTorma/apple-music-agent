@@ -2,6 +2,11 @@
 set -euo pipefail
 
 # Apple Music Agent — Deploy (pull latest + restart service)
+#
+# Usage:
+#   deploy.sh              — interactive menu (default: local)
+#   deploy.sh --local      — local deploy, no questions
+#   deploy.sh --remote user@host  — remote deploy, no questions
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
@@ -11,23 +16,67 @@ source "$SCRIPT_DIR/config.sh"
 info()  { echo "==> $*"; }
 error() { echo "ERROR: $*" >&2; exit 1; }
 
-# --- Local / Remote ---
+# --- Parse arguments ---
 
-if [[ "${1:-}" != "--local" ]]; then
+MODE=""
+REMOTE_TARGET=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --local)
+            MODE="local"
+            shift
+            ;;
+        --remote)
+            MODE="remote"
+            REMOTE_TARGET="${2:?--remote requires user@host}"
+            shift 2
+            ;;
+        *)
+            error "Unknown argument: $1"
+            ;;
+    esac
+done
+
+# --- Interactive menu (if no mode specified) ---
+
+if [[ -z "$MODE" ]]; then
     echo "Where to deploy?"
     echo "  1) Local (this machine)"
-    echo "  2) Remote [${DEFAULT_REMOTE_HOST}]"
-    read -rp "Choice [2]: " CHOICE
-    CHOICE="${CHOICE:-2}"
+    echo "  2) Remote"
+    read -rp "Choice [1]: " CHOICE
+    CHOICE="${CHOICE:-1}"
 
     if [[ "$CHOICE" == "2" ]]; then
-        read -rp "Remote host [${DEFAULT_REMOTE_HOST}]: " REMOTE_HOST
-        REMOTE_HOST="${REMOTE_HOST:-$DEFAULT_REMOTE_HOST}"
+        if [[ -n "${DEFAULT_REMOTE_USER:-}" ]]; then
+            read -rp "Remote user [${DEFAULT_REMOTE_USER}]: " REMOTE_USER
+            REMOTE_USER="${REMOTE_USER:-$DEFAULT_REMOTE_USER}"
+        else
+            read -rp "Remote user: " REMOTE_USER
+            [[ -n "$REMOTE_USER" ]] || { echo "ERROR: Remote user is required" >&2; exit 1; }
+        fi
 
-        echo "==> Deploying to ${REMOTE_HOST}..."
-        ssh -t "$REMOTE_HOST" "~/Agents/Music/scripts/deploy.sh --local"
-        exit $?
+        if [[ -n "${DEFAULT_REMOTE_HOST:-}" ]]; then
+            read -rp "Remote host [${DEFAULT_REMOTE_HOST}]: " REMOTE_HOST
+            REMOTE_HOST="${REMOTE_HOST:-$DEFAULT_REMOTE_HOST}"
+        else
+            read -rp "Remote host: " REMOTE_HOST
+            [[ -n "$REMOTE_HOST" ]] || { echo "ERROR: Remote host is required" >&2; exit 1; }
+        fi
+
+        REMOTE_TARGET="${REMOTE_USER}@${REMOTE_HOST}"
+        MODE="remote"
+    else
+        MODE="local"
     fi
+fi
+
+# --- Remote deploy ---
+
+if [[ "$MODE" == "remote" ]]; then
+    info "Deploying to ${REMOTE_TARGET}..."
+    ssh -t "$REMOTE_TARGET" "~/Agents/Music/scripts/deploy.sh --local"
+    exit $?
 fi
 
 # --- Preflight ---

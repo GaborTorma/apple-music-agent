@@ -8,32 +8,83 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- Local / Remote ---
 
-if [[ "${1:-}" != "--local" ]]; then
-    # Source config for DEFAULT_REMOTE_HOST (only works when run from repo)
+# --- Parse arguments ---
+
+MODE=""
+REMOTE_TARGET=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --local)
+            MODE="local"
+            shift
+            ;;
+        --remote)
+            MODE="remote"
+            REMOTE_TARGET="${2:?--remote requires user@host}"
+            shift 2
+            ;;
+        *)
+            echo "ERROR: Unknown argument: $1" >&2; exit 1
+            ;;
+    esac
+done
+
+# --- Interactive menu (if no mode specified) ---
+
+if [[ -z "$MODE" ]]; then
+    # Source config for defaults (only works when run from repo)
     if [[ -f "$SCRIPT_DIR/config.sh" ]]; then
         source "$SCRIPT_DIR/config.sh"
     else
-        DEFAULT_REMOTE_HOST="macclaw.local"
-        PLIST_NAME="com.torma.ai.apple-music-agent.plist"
+        echo "ERROR: config.sh not found: $SCRIPT_DIR/config.sh" >&2
+        exit 1
     fi
 
     echo "Where to install?"
     echo "  1) Local (this machine)"
-    echo "  2) Remote [${DEFAULT_REMOTE_HOST}]"
-    read -rp "Choice [2]: " CHOICE
-    CHOICE="${CHOICE:-2}"
+    echo "  2) Remote"
+    read -rp "Choice [1]: " CHOICE
+    CHOICE="${CHOICE:-1}"
 
     if [[ "$CHOICE" == "2" ]]; then
-        read -rp "Remote host [${DEFAULT_REMOTE_HOST}]: " REMOTE_HOST
-        REMOTE_HOST="${REMOTE_HOST:-$DEFAULT_REMOTE_HOST}"
+        if [[ -n "${DEFAULT_REMOTE_USER:-}" ]]; then
+            read -rp "Remote user [${DEFAULT_REMOTE_USER}]: " REMOTE_USER
+            REMOTE_USER="${REMOTE_USER:-$DEFAULT_REMOTE_USER}"
+        else
+            read -rp "Remote user: " REMOTE_USER
+            [[ -n "$REMOTE_USER" ]] || { echo "ERROR: Remote user is required" >&2; exit 1; }
+        fi
 
-        echo "==> Installing on ${REMOTE_HOST}..."
-        # Copy scripts to remote /tmp (repo may not exist there yet)
-        scp -q "$SCRIPT_DIR/config.sh" "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/$PLIST_NAME" "$SCRIPT_DIR/run-agent.sh" "${REMOTE_HOST}:/tmp/"
-        ssh -t "$REMOTE_HOST" "bash /tmp/install.sh --local"
-        exit $?
+        if [[ -n "${DEFAULT_REMOTE_HOST:-}" ]]; then
+            read -rp "Remote host [${DEFAULT_REMOTE_HOST}]: " REMOTE_HOST
+            REMOTE_HOST="${REMOTE_HOST:-$DEFAULT_REMOTE_HOST}"
+        else
+            read -rp "Remote host: " REMOTE_HOST
+            [[ -n "$REMOTE_HOST" ]] || { echo "ERROR: Remote host is required" >&2; exit 1; }
+        fi
+
+        REMOTE_TARGET="${REMOTE_USER}@${REMOTE_HOST}"
+        MODE="remote"
+    else
+        MODE="local"
     fi
-    # Choice 1: fall through to local install
+fi
+
+# --- Remote install ---
+
+if [[ "$MODE" == "remote" ]]; then
+    # Source config for PLIST_NAME if not yet loaded
+    if [[ -z "${PLIST_NAME:-}" && -f "$SCRIPT_DIR/config.sh" ]]; then
+        source "$SCRIPT_DIR/config.sh"
+    fi
+    PLIST_NAME="${PLIST_NAME:-com.torma.ai.apple-music-agent.plist}"
+
+    echo "==> Installing on ${REMOTE_TARGET}..."
+    # Copy scripts to remote /tmp (repo may not exist there yet)
+    scp -q "$SCRIPT_DIR/config.sh" "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/$PLIST_NAME" "$SCRIPT_DIR/run-agent.sh" "${REMOTE_TARGET}:/tmp/"
+    ssh -t "$REMOTE_TARGET" "bash /tmp/install.sh --local"
+    exit $?
 fi
 
 # --- Config ---
@@ -66,7 +117,7 @@ if ! command -v brew &>/dev/null; then
 fi
 
 info "Checking system dependencies..."
-for pkg in python3 yt-dlp ffmpeg ollama; do
+for pkg in python3 yt-dlp ffmpeg; do
     if command -v "$pkg" &>/dev/null; then
         info "$pkg already installed"
     else
@@ -74,6 +125,13 @@ for pkg in python3 yt-dlp ffmpeg ollama; do
         brew install "$pkg"
     fi
 done
+
+if ! command -v ollama &>/dev/null; then
+    echo ""
+    echo "WARNING: ollama is not installed."
+    echo "  Install manually: brew install ollama"
+    echo ""
+fi
 
 # --- Clone or update repo ---
 
