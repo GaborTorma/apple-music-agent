@@ -136,7 +136,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cancel_event = cancel_events.get(msg_id)
         if cancel_event:
             cancel_event.set()
-            await query.edit_message_text("🛑 Leállítva!")
+            await query.edit_message_text("Leállítva")
         else:
             await query.edit_message_text("⚠️ Nincs futó folyamat.")
         return
@@ -146,6 +146,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pending = pendings.get(msg_id)
     if not pending:
         await query.edit_message_text("⚠️ Nincs függő kérés.")
+        return
+
+    if data == "cancel_pending":
+        pendings.pop(msg_id, None)
+        name = f"{pending['artist']} – {pending['title']}"
+        await query.edit_message_text(f"Megszakítva: {name}")
         return
 
     if data == "confirm_metadata":
@@ -205,7 +211,10 @@ async def _show_confirmation(status_msg, pending: dict):
         f"📁 Fájl: {pending.get('filename') or '—'}"
     )
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ OK", callback_data="confirm_metadata")],
+        [
+            InlineKeyboardButton("✅ OK", callback_data="confirm_metadata"),
+            InlineKeyboardButton("❌ Mégsem", callback_data="cancel_pending"),
+        ],
         [
             InlineKeyboardButton("✏️ Előadó", callback_data="edit_artist"),
             InlineKeyboardButton("✏️ Cím", callback_data="edit_title"),
@@ -277,9 +286,10 @@ async def _run_with_metadata(context, url, title, artist, year, filename, status
 
     except PipelineCancelled:
         logger.info("Pipeline cancelled by user")
+        name = f"{artist} – {title}"
         await asyncio.sleep(0.5)
         try:
-            await status_msg.edit_text("🛑 Leállítva!")
+            await status_msg.edit_text(f"Leállítva: {name}")
         except Exception:
             pass
 
@@ -321,7 +331,7 @@ def _find_url(text: str) -> tuple[str | None, str | None]:
 
 def main():
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
-    app.add_handler(CallbackQueryHandler(handle_callback, pattern=r"^(confirm_metadata|cancel:\d+|edit_.+)$"))
+    app.add_handler(CallbackQueryHandler(handle_callback, pattern=r"^(confirm_metadata|cancel_pending|cancel:\d+|edit_.+)$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("Bot started, listening for messages...")
