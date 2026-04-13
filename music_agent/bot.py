@@ -190,6 +190,9 @@ async def _handle_field_edit(update: Update, context: ContextTypes.DEFAULT_TYPE,
     if field in ("artist", "title", "year", "filename"):
         pending[field] = text
 
+    if field in ("artist", "title"):
+        pending["filename"] = f"{pending['artist']} - {pending['title']}"
+
     await _show_confirmation(pending["status_msg"], pending)
 
 
