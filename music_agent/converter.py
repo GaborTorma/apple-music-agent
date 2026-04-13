@@ -54,6 +54,9 @@ def convert(
         "-b:a", f"{bitrate_kbps}k",
         "-metadata", f"title={title}",
         "-metadata", f"artist={artist}",
+        "-metadata", f"album={title}",
+        "-metadata", f"album_artist={artist}",
+        "-metadata", f"composer={artist}",
         output_path,
     ])
 
