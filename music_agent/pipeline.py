@@ -31,9 +31,9 @@ class PipelineResult:
 STEPS = [
     "Letöltés",
     "Konvertálás",
-    "Apple Music",
-    "iCloud szinkronizálás",
-    "Playlist",
+    "Hozzáadás az Apple Music-hoz",
+    "Szinkronizálás az iCloud Music-ba",
+    "Hozzáadás a lejátszási listához",
 ]
 
 
