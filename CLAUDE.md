@@ -74,12 +74,23 @@ brew install yt-dlp ffmpeg
 ## Configuration
 
 All in `.env`:
+
 - `TELEGRAM_BOT_TOKEN` — bot API token (required)
 - `ALLOWED_USER_IDS` — comma-separated user IDs
 - `PLAYLIST_NAME` — target playlist (default: Futás)
 - `MUSIC_DIR` — persistent music directory (default: empty = temp dir)
 
 Constants in `config.py`: max bitrate 192kbps, max file size 195MB, min bitrate 64kbps, poll interval 60s, poll timeout 20min.
+
+## Deployment
+
+Runs on Mac Mini (`macclaw.local`) as launchd LaunchAgent. Deploy: `git push` → `make deploy`.
+
+- Config: `scripts/config.sh` (install dir, service label, repo URL — Makefile derives from this)
+- Install dir: `~/Agents/Music`, service domain: `gui/$(id -u)` (user session, Apple Music needs GUI)
+- Logs: `~/Library/Logs/apple-music-agent/{stdout,stderr}.log`
+- `KeepAlive: true` + `ThrottleInterval: 10s` — auto-restart on crash
+- `RunAtLoad: true` — starts on login
 
 ## Language
 

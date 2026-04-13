@@ -116,6 +116,52 @@ Additional settings in `music_agent/config.py`:
 | `ICLOUD_POLL_INTERVAL_SECONDS` | 60 | iCloud sync check interval |
 | `ICLOUD_POLL_TIMEOUT_SECONDS` | 1200 | iCloud sync timeout (20 min) |
 
+## Deployment (Mac Mini)
+
+The bot is designed to run as a macOS service on a remote Mac Mini.
+
+### First-time install
+
+```bash
+make install
+```
+
+This will SSH to the Mac Mini and:
+- Install system dependencies (python3, yt-dlp, ffmpeg via Homebrew)
+- Clone the repository to `~/Agents/Music`
+- Create a Python virtual environment and install dependencies
+- Prompt for `.env` values (bot token, user IDs, playlist name)
+- Register and start a launchd LaunchAgent service
+
+### Deploy updates
+
+```bash
+make deploy
+```
+
+Pulls the latest code from GitHub and restarts the service.
+
+### Other commands
+
+```bash
+make logs        # Tail stderr logs (real-time)
+make status      # Show service status
+make restart     # Restart service
+make stop        # Stop service
+make tail N=100  # Last N lines of logs
+make env         # Edit .env on remote
+make ssh         # SSH to Mac Mini
+```
+
+### Service details
+
+- LaunchAgent: `com.gabortorma.apple-music-agent`
+- Auto-restarts on crash (`KeepAlive`)
+- Starts on login (`RunAtLoad`)
+- Logs: `~/Library/Logs/apple-music-agent/{stdout,stderr}.log`
+
+Remote host is configured in `Makefile` (`REMOTE_HOST`), all other settings in `scripts/config.sh`.
+
 ## Project structure
 
 ```
