@@ -75,6 +75,7 @@ python3 run.py
 For development with auto-reload:
 
 ```bash
+source .venv/bin/activate
 watchfiles "python run.py"
 ```
 
