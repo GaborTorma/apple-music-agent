@@ -128,6 +128,21 @@ class BaseDownloader:
         return None
 
 
+@dataclass
+class MetadataResult:
+    title: str
+    artist: str
+    duration_seconds: float
+
+
+def get_metadata(url: str) -> MetadataResult:
+    """Extract metadata from URL without downloading audio."""
+    dl = get_downloader(url)
+    meta = dl._extract_metadata(url)
+    title, artist, duration = dl._parse_metadata(meta)
+    return MetadataResult(title=title, artist=artist, duration_seconds=duration)
+
+
 def get_downloader(url: str) -> BaseDownloader:
     """Factory: return the appropriate downloader based on URL."""
     from music_agent.downloaders.soundcloud import SoundCloudDownloader

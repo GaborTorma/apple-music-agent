@@ -69,6 +69,8 @@ def _format_time(seconds: float) -> str:
 def run(
     url: str,
     on_status: Callable[[str], None] | None = None,
+    title_override: str | None = None,
+    artist_override: str | None = None,
 ) -> PipelineResult:
     """Run the full pipeline: download → convert → add to Apple Music → playlist."""
     header = None
@@ -102,6 +104,13 @@ def run(
             update_detail(f"{pct:.0f}%")
 
         dl_result = dl.download(url, tmp_dir, on_progress=on_dl_progress)
+
+        # Apply overrides
+        if title_override:
+            dl_result.title = title_override
+        if artist_override:
+            dl_result.artist = artist_override
+
         header = f"{dl_result.artist} – {dl_result.title}"
 
         # Step 1: Convert
