@@ -151,6 +151,7 @@ plutil -lint "$PLIST_PATH" || error "Plist validation failed"
 
 info "Loading service..."
 launchctl bootout "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
+sleep 1
 launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"
 
 # --- Status ---
