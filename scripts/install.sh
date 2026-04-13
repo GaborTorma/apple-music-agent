@@ -66,7 +66,7 @@ if ! command -v brew &>/dev/null; then
 fi
 
 info "Checking system dependencies..."
-for pkg in python3 yt-dlp ffmpeg; do
+for pkg in python3 yt-dlp ffmpeg ollama; do
     if command -v "$pkg" &>/dev/null; then
         info "$pkg already installed"
     else
@@ -117,11 +117,19 @@ if [[ ! -f "$INSTALL_DIR/.env" ]]; then
 
     read -rp "MUSIC_DIR (leave empty for temp dir): " MUSIC_DIR_VAL
 
+    read -rp "OLLAMA_HOST [http://localhost:11434]: " OLLAMA_HOST_VAL
+    OLLAMA_HOST_VAL="${OLLAMA_HOST_VAL:-http://localhost:11434}"
+
+    read -rp "OLLAMA_MODEL [gemma4:e2b]: " OLLAMA_MODEL_VAL
+    OLLAMA_MODEL_VAL="${OLLAMA_MODEL_VAL:-gemma4:e2b}"
+
     cat > "$INSTALL_DIR/.env" <<EOF
 TELEGRAM_BOT_TOKEN=$BOT_TOKEN
 ALLOWED_USER_IDS=$USER_IDS
 PLAYLIST_NAME=$PLAYLIST
 MUSIC_DIR=$MUSIC_DIR_VAL
+OLLAMA_HOST=$OLLAMA_HOST_VAL
+OLLAMA_MODEL=$OLLAMA_MODEL_VAL
 EOF
 
     info ".env created"

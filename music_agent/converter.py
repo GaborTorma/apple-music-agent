@@ -26,6 +26,8 @@ def convert(
     artist: str,
     duration_seconds: float,
     output_dir: str,
+    year: str = "",
+    filename: str = "",
     on_progress: Callable[[float], None] | None = None,
     cancel_event: threading.Event | None = None,
 ) -> ConversionResult:
@@ -36,7 +38,8 @@ def convert(
     if low_bitrate_warning:
         bitrate_kbps = config.MIN_BITRATE_KBPS
 
-    output_path = os.path.join(output_dir, f"{_safe_filename(title)}.m4a")
+    base_name = _safe_filename(filename) if filename else _safe_filename(title)
+    output_path = os.path.join(output_dir, f"{base_name}.m4a")
 
     cmd = [
         "ffmpeg", "-y",
@@ -53,14 +56,20 @@ def convert(
             "-disposition:v:0", "attached_pic",
         ])
 
-    cmd.extend([
-        "-c:a", "aac",
-        "-b:a", f"{bitrate_kbps}k",
+    metadata = [
         "-metadata", f"title={title}",
         "-metadata", f"artist={artist}",
         "-metadata", f"album={title}",
         "-metadata", f"album_artist={artist}",
         "-metadata", f"composer={artist}",
+    ]
+    if year:
+        metadata.extend(["-metadata", f"date={year}"])
+
+    cmd.extend([
+        "-c:a", "aac",
+        "-b:a", f"{bitrate_kbps}k",
+        *metadata,
         "-progress", "pipe:1",
         output_path,
     ])

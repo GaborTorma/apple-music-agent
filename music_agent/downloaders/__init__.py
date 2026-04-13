@@ -139,15 +139,23 @@ class BaseDownloader:
 class MetadataResult:
     title: str
     artist: str
+    year: str
+    filename: str
     duration_seconds: float
 
 
 def get_metadata(url: str) -> MetadataResult:
-    """Extract metadata from URL without downloading audio."""
+    """Extract raw metadata from URL without downloading audio."""
     dl = get_downloader(url)
     meta = dl._extract_metadata(url)
     title, artist, duration = dl._parse_metadata(meta)
-    return MetadataResult(title=title, artist=artist, duration_seconds=duration)
+    return MetadataResult(
+        title=title,
+        artist=artist,
+        year="",
+        filename=f"{artist} - {title}",
+        duration_seconds=duration,
+    )
 
 
 def get_downloader(url: str) -> BaseDownloader:

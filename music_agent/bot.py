@@ -17,7 +17,8 @@ from telegram.ext import (
 from music_agent import config
 from music_agent import pipeline
 from music_agent.pipeline import PipelineCancelled
-from music_agent.downloaders import get_metadata
+from music_agent.downloaders import MetadataResult, get_downloader
+from music_agent.services.ai_metadata import suggest_metadata
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -56,6 +57,7 @@ async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cancelled = False
 
     # Cancel pending metadata confirmation
+    context.user_data.pop("editing", None)
     pending = context.user_data.pop("pending", None)
     if pending:
         cancelled = True
@@ -82,10 +84,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = update.message.text or ""
 
-    # Check if user is editing artist/title for a pending request
-    pending = context.user_data.get("pending")
-    if pending and not _find_url(text):
-        return await _handle_metadata_edit(update, context, text)
+    # Check if user is editing a field for a pending request
+    editing = context.user_data.get("editing")
+    if editing and not _find_url(text):
+        return await _handle_field_edit(update, context, text)
 
     url, platform = _find_url(text)
     if not url:
@@ -99,7 +101,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         loop = asyncio.get_event_loop()
-        meta = await loop.run_in_executor(None, lambda: get_metadata(url))
+
+        # Phase 1: extract raw metadata from URL
+        dl = get_downloader(url)
+        raw_meta = await loop.run_in_executor(None, lambda: dl._extract_metadata(url))
+        raw_title, raw_artist, duration = dl._parse_metadata(raw_meta)
+
+        # Phase 2: AI enrichment
+        await status_msg.edit_text("▸ AI feldolgozás...")
+        ai = await loop.run_in_executor(None, lambda: suggest_metadata(raw_meta))
+
+        if ai:
+            title = ai.get("title") or raw_title
+            artist = ai.get("artist") or raw_artist
+            year = ai.get("year", "")
+            filename = ai.get("filename", "")
+        else:
+            title, artist, year, filename = raw_title, raw_artist, "", ""
+
+        if not filename:
+            filename = f"{artist} - {title}"
+
+        meta = MetadataResult(
+            title=title, artist=artist, year=year,
+            filename=filename, duration_seconds=duration,
+        )
     except Exception as e:
         logger.exception("Metadata extraction failed")
         await status_msg.edit_text(f"❌ Hiba a metaadatok lekérésekor: {e}")
@@ -111,80 +137,90 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "platform": platform,
         "title": meta.title,
         "artist": meta.artist,
+        "year": meta.year,
+        "filename": meta.filename,
         "status_msg": status_msg,
         "original_msg": update.message,
     }
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ OK", callback_data="confirm_metadata")],
-    ])
-
-    await status_msg.edit_text(
-        f"Előadó: {meta.artist}\n"
-        f"Cím: {meta.title}\n\n"
-        f"Írd át, ha módosítanád (Előadó – Cím):",
-        reply_markup=keyboard,
-    )
+    await _show_confirmation(status_msg, context.user_data["pending"])
 
 
-async def handle_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle inline keyboard button press to confirm metadata."""
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle all inline keyboard button presses."""
     query = update.callback_query
     await query.answer()
 
-    pending = context.user_data.pop("pending", None)
+    pending = context.user_data.get("pending")
     if not pending:
         await query.edit_message_text("⚠️ Nincs függő kérés.")
         return
 
-    await _run_with_metadata(
-        context,
-        pending["url"],
-        pending["title"],
-        pending["artist"],
-        pending["status_msg"],
-        pending["original_msg"],
-    )
+    data = query.data
+
+    if data == "confirm_metadata":
+        context.user_data.pop("pending")
+        await _run_with_metadata(
+            context,
+            pending["url"],
+            pending["title"],
+            pending["artist"],
+            pending["year"],
+            pending["filename"],
+            pending["status_msg"],
+            pending["original_msg"],
+        )
+    elif data.startswith("edit_"):
+        field = data[5:]  # artist, title, year, filename
+        context.user_data["editing"] = field
+        field_labels = {
+            "artist": "Előadó",
+            "title": "Cím",
+            "year": "Év",
+            "filename": "Fájlnév",
+        }
+        await query.edit_message_text(
+            f"Írd be az új értéket ({field_labels.get(field, field)}):",
+        )
 
 
-async def _handle_metadata_edit(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-    """Handle user typing override for artist/title."""
+async def _handle_field_edit(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """Handle user typing a new value for a pending field edit."""
     pending = context.user_data.get("pending")
-    if not pending:
+    editing = context.user_data.pop("editing", None)
+    if not pending or not editing:
         return
 
     text = text.strip()
+    if editing in ("artist", "title", "year", "filename"):
+        pending[editing] = text
 
-    # Parse "Artist – Title" (em dash, en dash, or hyphen with spaces)
-    parts = re.split(r'\s*[–—-]\s*', text, maxsplit=1)
-    if len(parts) == 2 and parts[0] and parts[1]:
-        artist, title = parts[0].strip(), parts[1].strip()
-    else:
-        await update.message.reply_text(
-            "Formátum: Előadó – Cím\n"
-            f"Példa: {pending['artist']} – {pending['title']}"
-        )
-        return
+    await _show_confirmation(pending["status_msg"], pending)
 
-    context.user_data.pop("pending")
 
-    # Remove the inline keyboard from the old message
-    try:
-        await pending["status_msg"].edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-
-    await _run_with_metadata(
-        context,
-        pending["url"],
-        title,
-        artist,
-        pending["status_msg"],
-        pending["original_msg"],
+async def _show_confirmation(status_msg, pending: dict):
+    """Show metadata confirmation message with per-field edit buttons."""
+    text = (
+        f"🎵 Előadó: {pending['artist']}\n"
+        f"📀 Cím: {pending['title']}\n"
+        f"📅 Év: {pending.get('year') or '—'}\n"
+        f"📁 Fájl: {pending.get('filename') or '—'}"
     )
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ OK", callback_data="confirm_metadata")],
+        [
+            InlineKeyboardButton("✏️ Előadó", callback_data="edit_artist"),
+            InlineKeyboardButton("✏️ Cím", callback_data="edit_title"),
+        ],
+        [
+            InlineKeyboardButton("✏️ Év", callback_data="edit_year"),
+            InlineKeyboardButton("✏️ Fájl", callback_data="edit_filename"),
+        ],
+    ])
+    await status_msg.edit_text(text, reply_markup=keyboard)
 
 
-async def _run_with_metadata(context, url, title, artist, status_msg, original_msg):
+async def _run_with_metadata(context, url, title, artist, year, filename, status_msg, original_msg):
     """Run the pipeline with confirmed metadata."""
     cancel_event = threading.Event()
     context.user_data["cancel_event"] = cancel_event
@@ -226,7 +262,7 @@ async def _run_with_metadata(context, url, title, artist, status_msg, original_m
     try:
         result = await loop.run_in_executor(
             None,
-            lambda: _run_pipeline(url, title, artist, sync_status, flush_pending, cancel_event),
+            lambda: _run_pipeline(url, title, artist, year, filename, sync_status, flush_pending, cancel_event),
         )
 
         try:
@@ -259,7 +295,7 @@ async def _run_with_metadata(context, url, title, artist, status_msg, original_m
         context.user_data.pop("cancel_event", None)
 
 
-def _run_pipeline(url, title, artist, sync_status, flush_pending, cancel_event):
+def _run_pipeline(url, title, artist, year, filename, sync_status, flush_pending, cancel_event):
     """Run pipeline in executor thread, flushing pending status at the end."""
     try:
         return pipeline.run(
@@ -267,6 +303,8 @@ def _run_pipeline(url, title, artist, sync_status, flush_pending, cancel_event):
             on_status=sync_status,
             title_override=title,
             artist_override=artist,
+            year_override=year,
+            filename_override=filename,
             cancel_event=cancel_event,
         )
     finally:
@@ -293,7 +331,7 @@ def main():
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
     app.post_init = post_init
     app.add_handler(CommandHandler("stop", stop_command))
-    app.add_handler(CallbackQueryHandler(handle_confirm, pattern="^confirm_metadata$"))
+    app.add_handler(CallbackQueryHandler(handle_callback, pattern="^(confirm_metadata|edit_.+)$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("Bot started, listening for messages...")

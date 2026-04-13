@@ -1,6 +1,6 @@
 # telegram-to-apple-music
 
-Telegram bot that downloads audio from YouTube, SoundCloud, and Mixcloud links, converts to AAC m4a with dynamic bitrate (max 192kbps/195MB), adds to Apple Music library, waits for iCloud Music Library sync, and adds to a configured playlist. Built for macOS with yt-dlp, ffmpeg, and AppleScript.
+Telegram bot that downloads audio from YouTube, SoundCloud, and Mixcloud links, converts to AAC m4a with dynamic bitrate (max 192kbps/195MB), adds to Apple Music library, waits for iCloud Music Library sync, and adds to a configured playlist. Uses local AI (Ollama) to suggest clean metadata (artist, title, year, filename). Built for macOS with yt-dlp, ffmpeg, AppleScript, and Ollama.
 
 ## Requirements
 
@@ -9,6 +9,7 @@ Telegram bot that downloads audio from YouTube, SoundCloud, and Mixcloud links, 
 - Python 3.12+
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [ffmpeg](https://ffmpeg.org/) (with AAC encoder)
+- [Ollama](https://ollama.com/) with a pulled model (e.g. `gemma4:e2b`)
 
 ### Install system dependencies
 
@@ -20,8 +21,8 @@ brew install yt-dlp ffmpeg
 
 ```bash
 # Clone
-git clone https://github.com/youruser/telegram-to-apple-music.git
-cd telegram-to-apple-music
+git clone https://github.com/gabortorma/apple-music-agent.git
+cd apple-music-agent
 
 # Virtual environment
 python3 -m venv .venv
@@ -48,6 +49,8 @@ TELEGRAM_BOT_TOKEN=your_bot_token_here
 ALLOWED_USER_IDS=123456789
 PLAYLIST_NAME=Futás
 MUSIC_DIR=/Users/Shared/Music
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=gemma4:e2b
 ```
 
 ### Get your Telegram user ID
@@ -76,8 +79,8 @@ watchfiles "python run.py"
 
 Send a YouTube, SoundCloud, or Mixcloud link to your bot on Telegram. The bot will:
 
-1. Extract metadata (artist, title) and show a confirmation prompt
-2. Accept with ✅ OK, or override by typing `Előadó – Cím`
+1. Extract metadata and use AI to suggest clean artist, title, year, and filename
+2. Show confirmation with per-field edit buttons — accept with ✅ OK or edit individually
 3. Download the audio (original format)
 4. Convert to AAC m4a with dynamic bitrate calculation
 5. Add to Apple Music library
@@ -88,17 +91,17 @@ Status updates are sent back via Telegram at each step.
 
 ### Commands
 
-| Command | Description |
-|---------|-------------|
+| Command | Description                                         |
+| ------- | --------------------------------------------------- |
 | `/stop` | Cancel the running pipeline or pending confirmation |
 
 ## Supported platforms
 
-| Platform | Example URL |
-|---|---|
-| YouTube | `https://youtube.com/watch?v=...`, `https://youtu.be/...`, `https://music.youtube.com/watch?v=...` |
-| SoundCloud | `https://soundcloud.com/artist/track`, `https://on.soundcloud.com/...` |
-| Mixcloud | `https://www.mixcloud.com/artist/mix-name/` |
+| Platform   | Example URL                                                                                        |
+| ---------- | -------------------------------------------------------------------------------------------------- |
+| YouTube    | `https://youtube.com/watch?v=...`, `https://youtu.be/...`, `https://music.youtube.com/watch?v=...` |
+| SoundCloud | `https://soundcloud.com/artist/track`, `https://on.soundcloud.com/...`                             |
+| Mixcloud   | `https://www.mixcloud.com/artist/mix-name/`                                                        |
 
 ## Dynamic bitrate
 
@@ -112,21 +115,23 @@ If the calculated bitrate drops below 64 kbps, a warning is sent.
 
 ## Configuration
 
-| Variable | Default | Description |
-|---|---|---|
-| `TELEGRAM_BOT_TOKEN` | — | Telegram Bot API token |
-| `ALLOWED_USER_IDS` | — | Comma-separated Telegram user IDs |
-| `PLAYLIST_NAME` | `Futás` | Target Apple Music playlist name |
-| `MUSIC_DIR` | *(empty)* | Persistent music directory. If empty, files stay in temp dir |
+| Variable             | Default                  | Description                                                  |
+| -------------------- | ------------------------ | ------------------------------------------------------------ |
+| `TELEGRAM_BOT_TOKEN` | —                        | Telegram Bot API token                                       |
+| `ALLOWED_USER_IDS`   | —                        | Comma-separated Telegram user IDs                            |
+| `PLAYLIST_NAME`      | `Futás`                  | Target Apple Music playlist name                             |
+| `MUSIC_DIR`          | _(empty)_                | Persistent music directory. If empty, files stay in temp dir |
+| `OLLAMA_HOST`        | `http://localhost:11434` | Ollama API URL                                               |
+| `OLLAMA_MODEL`       | `gemma4:e2b`             | Ollama model for metadata suggestions                        |
 
 Additional settings in `music_agent/config.py`:
 
-| Setting | Default | Description |
-|---|---|---|
-| `MAX_BITRATE_KBPS` | 192 | Maximum audio bitrate |
-| `MAX_FILE_SIZE_BYTES` | 195 MB | Maximum output file size |
-| `ICLOUD_POLL_INTERVAL_SECONDS` | 60 | iCloud sync check interval |
-| `ICLOUD_POLL_TIMEOUT_SECONDS` | 1200 | iCloud sync timeout (20 min) |
+| Setting                        | Default | Description                  |
+| ------------------------------ | ------- | ---------------------------- |
+| `MAX_BITRATE_KBPS`             | 192     | Maximum audio bitrate        |
+| `MAX_FILE_SIZE_BYTES`          | 195 MB  | Maximum output file size     |
+| `ICLOUD_POLL_INTERVAL_SECONDS` | 60      | iCloud sync check interval   |
+| `ICLOUD_POLL_TIMEOUT_SECONDS`  | 1200    | iCloud sync timeout (20 min) |
 
 ## Deployment (Mac Mini)
 
@@ -139,10 +144,12 @@ make install
 ```
 
 This will SSH to the Mac Mini and:
-- Install system dependencies (python3, yt-dlp, ffmpeg via Homebrew)
+
+- Install system dependencies (python3, yt-dlp, ffmpeg, ollama via Homebrew)
+- Pull the default Ollama model (gemma4:e2b)
 - Clone the repository to `~/Agents/Music`
 - Create a Python virtual environment and install dependencies
-- Prompt for `.env` values (bot token, user IDs, playlist name)
+- Prompt for `.env` values (bot token, user IDs, playlist name, Ollama config)
 - Register and start a launchd LaunchAgent service
 
 ### Deploy updates
@@ -189,7 +196,8 @@ Remote host is configured in `Makefile` (`REMOTE_HOST`), all other settings in `
 │   │   ├── soundcloud.py           # SoundCloudDownloader
 │   │   └── mixcloud.py             # MixcloudDownloader
 │   └── services/
-│       └── apple_music.py          # AppleScript integration
+│       ├── apple_music.py          # AppleScript integration
+│       └── ai_metadata.py          # Ollama AI metadata enrichment
 ├── .env.example
 └── requirements.txt
 ```

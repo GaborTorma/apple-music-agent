@@ -76,6 +76,8 @@ def run(
     on_status: Callable[[str], None] | None = None,
     title_override: str | None = None,
     artist_override: str | None = None,
+    year_override: str | None = None,
+    filename_override: str | None = None,
     cancel_event: threading.Event | None = None,
 ) -> PipelineResult:
     """Run the full pipeline: download → convert → add to Apple Music → playlist."""
@@ -142,6 +144,8 @@ def run(
                 cover_path=dl_result.cover_path,
                 title=dl_result.title,
                 artist=dl_result.artist,
+                year=year_override or "",
+                filename=filename_override or "",
                 duration_seconds=dl_result.duration_seconds,
                 output_dir=tmp_dir,
                 on_progress=on_conv_progress,
