@@ -155,7 +155,7 @@ make ssh         # SSH to Mac Mini
 
 ### Service details
 
-- LaunchAgent: `com.gabortorma.apple-music-agent`
+- LaunchAgent: `com.torma.ai.apple-music-agent`
 - Auto-restarts on crash (`KeepAlive`)
 - Starts on login (`RunAtLoad`)
 - Logs: `~/Library/Logs/apple-music-agent/{stdout,stderr}.log`

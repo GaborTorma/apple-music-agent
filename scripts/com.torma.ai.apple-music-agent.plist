@@ -4,11 +4,11 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.gabortorma.apple-music-agent</string>
+    <string>com.torma.ai.apple-music-agent</string>
 
     <key>ProgramArguments</key>
     <array>
-        <string>__INSTALL_DIR__/gabortorma.apple-music-agent</string>
+        <string>__INSTALL_DIR__/torma.ai.apple-music-agent</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -24,10 +24,10 @@
     <integer>10</integer>
 
     <key>StandardOutPath</key>
-    <string>__HOME__/Library/Logs/apple-music-agent/stdout.log</string>
+    <string>__HOME__/Library/Logs/com.torma.ai.apple-music-agent/stdout.log</string>
 
     <key>StandardErrorPath</key>
-    <string>__HOME__/Library/Logs/apple-music-agent/stderr.log</string>
+    <string>__HOME__/Library/Logs/com.torma.ai.apple-music-agent/stderr.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>

@@ -14,7 +14,7 @@ if [[ "${1:-}" != "--local" ]]; then
         source "$SCRIPT_DIR/config.sh"
     else
         DEFAULT_REMOTE_HOST="macclaw.local"
-        PLIST_NAME="com.gabortorma.apple-music-agent.plist"
+        PLIST_NAME="com.torma.ai.apple-music-agent.plist"
     fi
 
     echo "Where to install?"
@@ -44,8 +44,8 @@ if [[ -f "$SCRIPT_DIR/config.sh" ]]; then
 else
     # Fallback defaults
     INSTALL_DIR="$HOME/Agents/Music"
-    SERVICE_LABEL="com.gabortorma.apple-music-agent"
-    PLIST_NAME="com.gabortorma.apple-music-agent.plist"
+    SERVICE_LABEL="com.torma.ai.apple-music-agent"
+    PLIST_NAME="com.torma.ai.apple-music-agent.plist"
     PLIST_PATH="$HOME/Library/LaunchAgents/$PLIST_NAME"
     LOG_DIR="$HOME/Library/Logs/apple-music-agent"
     REPO_URL="https://github.com/GaborTorma/apple-music-agent.git"
@@ -96,7 +96,7 @@ fi
 
 RUN_SCRIPT="$INSTALL_DIR/scripts/run-agent.sh"
 [[ -f "$RUN_SCRIPT" ]] || { cp /tmp/run-agent.sh "$INSTALL_DIR/scripts/"; RUN_SCRIPT="$INSTALL_DIR/scripts/run-agent.sh"; }
-ln -sf "$RUN_SCRIPT" "$INSTALL_DIR/gabortorma.apple-music-agent"
+ln -sf "$RUN_SCRIPT" "$INSTALL_DIR/torma.ai.apple-music-agent"
 
 # --- Python venv ---
 
