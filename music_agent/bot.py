@@ -4,11 +4,10 @@ import re
 import threading
 import time
 
-from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
-    CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
@@ -44,42 +43,15 @@ URL_PATTERNS = {
 # Minimum interval between Telegram message edits (seconds)
 _MIN_EDIT_INTERVAL = 1
 
-_STOP_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("Leállítás", callback_data="cancel_pipeline")],
-])
+def _stop_keyboard(msg_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Leállítás", callback_data=f"cancel:{msg_id}")],
+    ])
 
 
 def _is_allowed(user_id: int) -> bool:
     return user_id in config.ALLOWED_USER_IDS
 
-
-async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /stop command — cancel running pipeline or pending confirmation."""
-    if not _is_allowed(update.effective_user.id):
-        return
-
-    cancelled = False
-
-    # Cancel pending metadata confirmation
-    context.chat_data.pop("editing", None)
-    pending = context.chat_data.pop("pending", None)
-    if pending:
-        cancelled = True
-        try:
-            await pending["status_msg"].edit_text("🛑 Leállítva!")
-        except Exception:
-            pass
-
-    # Cancel running pipeline
-    cancel_event = context.chat_data.get("cancel_event")
-    if cancel_event:
-        cancelled = True
-        cancel_event.set()
-
-    if cancelled:
-        await update.message.reply_text("🛑 Leállítva!")
-    else:
-        await update.message.reply_text("Nincs futó folyamat.")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -135,8 +107,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(f"❌ Hiba a metaadatok lekérésekor: {e}")
         return
 
-    # Store pending request
-    context.chat_data["pending"] = {
+    # Store pending request keyed by status message ID
+    pending = {
         "url": url,
         "platform": platform,
         "title": meta.title,
@@ -146,8 +118,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "status_msg": status_msg,
         "original_msg": update.message,
     }
+    context.chat_data.setdefault("pendings", {})[status_msg.message_id] = pending
 
-    await _show_confirmation(status_msg, context.chat_data["pending"])
+    await _show_confirmation(status_msg, pending)
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -157,8 +130,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data
 
-    if data == "cancel_pipeline":
-        cancel_event = context.chat_data.get("cancel_event")
+    if data.startswith("cancel:"):
+        msg_id = int(data.split(":")[1])
+        cancel_events = context.chat_data.get("cancel_events", {})
+        cancel_event = cancel_events.get(msg_id)
         if cancel_event:
             cancel_event.set()
             await query.edit_message_text("🛑 Leállítva!")
@@ -166,13 +141,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("⚠️ Nincs futó folyamat.")
         return
 
-    pending = context.chat_data.get("pending")
+    msg_id = query.message.message_id
+    pendings = context.chat_data.get("pendings", {})
+    pending = pendings.get(msg_id)
     if not pending:
         await query.edit_message_text("⚠️ Nincs függő kérés.")
         return
 
     if data == "confirm_metadata":
-        context.chat_data.pop("pending")
+        pendings.pop(msg_id, None)
         await _run_with_metadata(
             context,
             pending["url"],
@@ -185,7 +162,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     elif data.startswith("edit_"):
         field = data[5:]  # artist, title, year, filename
-        context.chat_data["editing"] = field
+        context.chat_data["editing"] = {"field": field, "msg_id": msg_id}
         field_labels = {
             "artist": "Előadó",
             "title": "Cím",
@@ -199,14 +176,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _handle_field_edit(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
     """Handle user typing a new value for a pending field edit."""
-    pending = context.chat_data.get("pending")
     editing = context.chat_data.pop("editing", None)
-    if not pending or not editing:
+    if not editing:
+        return
+
+    field = editing["field"]
+    msg_id = editing["msg_id"]
+    pending = context.chat_data.get("pendings", {}).get(msg_id)
+    if not pending:
         return
 
     text = text.strip()
-    if editing in ("artist", "title", "year", "filename"):
-        pending[editing] = text
+    if field in ("artist", "title", "year", "filename"):
+        pending[field] = text
 
     await _show_confirmation(pending["status_msg"], pending)
 
@@ -236,7 +218,7 @@ async def _show_confirmation(status_msg, pending: dict):
 async def _run_with_metadata(context, url, title, artist, year, filename, status_msg, original_msg):
     """Run the pipeline with confirmed metadata."""
     cancel_event = threading.Event()
-    context.chat_data["cancel_event"] = cancel_event
+    context.chat_data.setdefault("cancel_events", {})[status_msg.message_id] = cancel_event
 
     loop = asyncio.get_event_loop()
     last_edit_time = 0.0
@@ -258,7 +240,7 @@ async def _run_with_metadata(context, url, title, artist, year, filename, status
         last_text = msg
         last_edit_time = now
         future = asyncio.run_coroutine_threadsafe(
-            status_msg.edit_text(msg, reply_markup=_STOP_KEYBOARD), loop,
+            status_msg.edit_text(msg, reply_markup=_stop_keyboard(status_msg.message_id)), loop,
         )
         try:
             future.result(timeout=5)
@@ -306,7 +288,7 @@ async def _run_with_metadata(context, url, title, artist, year, filename, status
             pass
 
     finally:
-        context.chat_data.pop("cancel_event", None)
+        context.chat_data.get("cancel_events", {}).pop(status_msg.message_id, None)
 
 
 def _run_pipeline(url, title, artist, year, filename, sync_status, flush_pending, cancel_event):
@@ -334,18 +316,9 @@ def _find_url(text: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-async def post_init(application: Application) -> None:
-    """Register bot commands with Telegram so they appear in the / menu."""
-    await application.bot.set_my_commands([
-        BotCommand("stop", "Folyamat leállítása"),
-    ])
-
-
 def main():
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
-    app.post_init = post_init
-    app.add_handler(CommandHandler("stop", stop_command))
-    app.add_handler(CallbackQueryHandler(handle_callback, pattern="^(confirm_metadata|cancel_pipeline|edit_.+)$"))
+    app.add_handler(CallbackQueryHandler(handle_callback, pattern=r"^(confirm_metadata|cancel:\d+|edit_.+)$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("Bot started, listening for messages...")
