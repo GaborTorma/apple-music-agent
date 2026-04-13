@@ -81,7 +81,7 @@ def run(
     cancel_event: threading.Event | None = None,
 ) -> PipelineResult:
     """Run the full pipeline: download → convert → add to Apple Music → playlist."""
-    header = None
+    header = f"{artist_override} – {title_override}" if artist_override and title_override else None
     current_step = 0
     step_detail = ""
     completed = 0
