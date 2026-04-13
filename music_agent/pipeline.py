@@ -23,24 +23,93 @@ class PipelineResult:
     low_bitrate_warning: bool
 
 
+STEPS = [
+    "Letöltés",
+    "Konvertálás",
+    "Apple Music",
+    "iCloud szinkronizálás",
+    "Playlist",
+]
+
+
+def _format_status(
+    header: str | None,
+    current_step: int,
+    step_detail: str,
+    completed_steps: int,
+) -> str:
+    """Format the multi-line status message.
+
+    completed_steps: all steps with index < this value are shown as done.
+    """
+    lines = []
+    if header:
+        lines.append(header)
+        lines.append("")
+
+    for i, name in enumerate(STEPS):
+        if i < completed_steps:
+            lines.append(f"✓ {name}")
+        elif i == current_step:
+            if step_detail:
+                lines.append(f"▸ {name} {step_detail}")
+            else:
+                lines.append(f"▸ {name}...")
+        else:
+            lines.append(f"  {name}")
+
+    return "\n".join(lines)
+
+
+def _format_time(seconds: float) -> str:
+    m, s = divmod(int(seconds), 60)
+    return f"{m}:{s:02d}"
+
+
 def run(
     url: str,
     on_status: Callable[[str], None] | None = None,
 ) -> PipelineResult:
     """Run the full pipeline: download → convert → add to Apple Music → playlist."""
-    def status(msg: str):
+    header = None
+    current_step = 0
+    step_detail = ""
+    completed = 0
+
+    def emit(force: bool = False):
         if on_status:
-            on_status(msg)
+            on_status(_format_status(header, current_step, step_detail, completed))
+
+    def set_step(index: int, detail: str = ""):
+        nonlocal current_step, step_detail, completed
+        completed = index
+        current_step = index
+        step_detail = detail
+        emit()
+
+    def update_detail(detail: str):
+        nonlocal step_detail
+        step_detail = detail
+        emit()
 
     tmp_dir = tempfile.mkdtemp(prefix="music_agent_")
     try:
-        # Step 1: Download (auto-selects downloader based on URL)
-        status("Letöltés indítása...")
+        # Step 0: Download (auto-selects downloader based on URL)
+        set_step(0)
         dl = get_downloader(url)
-        dl_result = dl.download(url, tmp_dir)
 
-        # Step 2: Convert
-        status(f"Konvertálás m4a-ba ({dl_result.title})...")
+        def on_dl_progress(pct: float):
+            update_detail(f"{pct:.0f}%")
+
+        dl_result = dl.download(url, tmp_dir, on_progress=on_dl_progress)
+        header = f"{dl_result.artist} – {dl_result.title}"
+
+        # Step 1: Convert
+        set_step(1)
+
+        def on_conv_progress(pct: float):
+            update_detail(f"{pct:.0f}%")
+
         conv_result = converter.convert(
             audio_path=dl_result.audio_path,
             cover_path=dl_result.cover_path,
@@ -48,15 +117,13 @@ def run(
             artist=dl_result.artist,
             duration_seconds=dl_result.duration_seconds,
             output_dir=tmp_dir,
+            on_progress=on_conv_progress,
         )
 
         if conv_result.low_bitrate_warning:
-            status(
-                f"Figyelmeztetés: alacsony bitráta ({conv_result.bitrate_kbps} kbps) "
-                f"a hosszú időtartam miatt"
-            )
+            update_detail(f"⚠ {conv_result.bitrate_kbps} kbps (alacsony)")
 
-        # Step 2.5: Move m4a to persistent location (if configured)
+        # Step 1.5: Move m4a to persistent location (if configured)
         if config.MUSIC_DIR:
             os.makedirs(config.MUSIC_DIR, exist_ok=True)
             final_m4a = os.path.join(config.MUSIC_DIR, os.path.basename(conv_result.m4a_path))
@@ -64,20 +131,30 @@ def run(
         else:
             final_m4a = conv_result.m4a_path
 
-        # Step 3: Add to Apple Music from persistent location
-        status("Hozzáadás az Apple Music-hoz...")
+        # Step 2: Add to Apple Music
+        set_step(2)
         persistent_id = apple_music.add_to_library(final_m4a)
 
-        # Step 4: Wait for iCloud sync
-        status("iCloud Music Library szinkronizálás (max 20 perc)...")
-        icloud_synced = apple_music.wait_for_icloud_sync(persistent_id)
+        # Step 3: Wait for iCloud sync
+        set_step(3)
+
+        def on_sync_progress(elapsed: float, timeout: float):
+            update_detail(f"{_format_time(elapsed)} / {_format_time(timeout)}")
+
+        icloud_synced = apple_music.wait_for_icloud_sync(
+            persistent_id, on_progress=on_sync_progress,
+        )
 
         if not icloud_synced:
-            status("Figyelmeztetés: iCloud szinkronizálás timeout, de folytatom...")
+            update_detail("⚠ timeout")
 
-        # Step 5: Add to playlist
-        status(f"Hozzáadás a '{config.PLAYLIST_NAME}' playlisthez...")
+        # Step 4: Add to playlist
+        set_step(4)
         apple_music.add_to_playlist(persistent_id, config.PLAYLIST_NAME)
+
+        # Mark all done
+        completed = len(STEPS)
+        emit()
 
         return PipelineResult(
             title=dl_result.title,

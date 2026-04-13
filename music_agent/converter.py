@@ -2,6 +2,7 @@ import math
 import subprocess
 import os
 from dataclasses import dataclass
+from typing import Callable
 
 from music_agent import config
 
@@ -24,6 +25,7 @@ def convert(
     artist: str,
     duration_seconds: float,
     output_dir: str,
+    on_progress: Callable[[float], None] | None = None,
 ) -> ConversionResult:
     """Convert audio to AAC m4a with dynamic bitrate to stay under size limit."""
     bitrate_kbps = _calculate_bitrate(duration_seconds)
@@ -57,13 +59,29 @@ def convert(
         "-metadata", f"album={title}",
         "-metadata", f"album_artist={artist}",
         "-metadata", f"composer={artist}",
+        "-progress", "pipe:1",
         output_path,
     ])
 
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError as e:
-        raise ConversionError(f"ffmpeg hiba: {e.stderr}") from e
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        for line in proc.stdout:
+            if on_progress and line.startswith("out_time_us="):
+                try:
+                    us = int(line.split("=")[1])
+                    if duration_seconds > 0:
+                        pct = min(99.0, us / (duration_seconds * 1_000_000) * 100)
+                        on_progress(pct)
+                except (ValueError, IndexError):
+                    pass
+        proc.wait()
+        if proc.returncode != 0:
+            stderr = proc.stderr.read()
+            raise ConversionError(f"ffmpeg hiba: {stderr}")
+    except OSError as e:
+        raise ConversionError(f"ffmpeg hiba: {e}") from e
 
     # Verify file size
     file_size = os.path.getsize(output_path)

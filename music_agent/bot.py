@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import re
+import time
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
@@ -27,6 +29,9 @@ URL_PATTERNS = {
         rf'(https?://)?(www\.)?mixcloud\.com/{_PSEG}/{_PSEG}/?'
     ),
 }
+
+# Minimum interval between Telegram message edits (seconds)
+_MIN_EDIT_INTERVAL = 1.5
 
 
 def _is_allowed(user_id: int) -> bool:
@@ -65,44 +70,78 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not url.startswith("http"):
         url = "https://" + url
 
-    status_msg = await update.message.reply_text(f"Feldolgozás indítása ({platform})...")
+    status_msg = await update.message.reply_text(f"▸ Feldolgozás indítása ({platform})...")
 
-    async def on_status(msg: str):
+    loop = asyncio.get_event_loop()
+    last_edit_time = 0.0
+    last_text = ""
+    pending_text = ""
+
+    def sync_status(msg: str):
+        """Called from the pipeline thread. Bridges to async Telegram edit with rate limiting."""
+        nonlocal last_edit_time, last_text, pending_text
+
+        if msg == last_text:
+            return
+
+        now = time.monotonic()
+        if now - last_edit_time < _MIN_EDIT_INTERVAL:
+            pending_text = msg
+            return
+
+        pending_text = ""
+        last_text = msg
+        last_edit_time = now
+        future = asyncio.run_coroutine_threadsafe(
+            status_msg.edit_text(msg), loop,
+        )
         try:
-            await status_msg.edit_text(msg)
+            future.result(timeout=5)
         except Exception:
             pass
 
+    def flush_pending():
+        """Send the last pending status update that was rate-limited."""
+        nonlocal pending_text
+        if pending_text and pending_text != last_text:
+            msg = pending_text
+            pending_text = ""
+            sync_status(msg)
+
     try:
-        import asyncio
-        import functools
+        result = await loop.run_in_executor(
+            None,
+            lambda: _run_pipeline(url, sync_status, flush_pending),
+        )
 
-        def sync_pipeline():
-            statuses = []
-            def collect_status(msg):
-                statuses.append(msg)
-            result = pipeline.run(url, on_status=collect_status)
-            return result, statuses
+        # Delete the progress message
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
 
-        loop = asyncio.get_event_loop()
-        result, statuses = await loop.run_in_executor(None, sync_pipeline)
-
-        for s in statuses[:-1] if statuses else []:
-            try:
-                await status_msg.edit_text(s)
-            except Exception:
-                pass
-
-        sync_icon = "" if result.icloud_synced else " (iCloud sync timeout)"
-        await status_msg.edit_text(
-            f"Kész! Hozzáadva a '{config.PLAYLIST_NAME}' playlisthez!\n"
-            f"{result.title} - {result.artist}\n"
-            f"Bitráta: {result.bitrate_kbps} kbps{sync_icon}"
+        # Send final result as a new message (triggers notification)
+        sync_icon = "\n⚠️ iCloud sync timeout" if not result.icloud_synced else ""
+        await update.message.reply_text(
+            f"✅ {result.artist} – {result.title}\n"
+            f"Hozzáadva: {config.PLAYLIST_NAME} | {result.bitrate_kbps} kbps"
+            f"{sync_icon}"
         )
 
     except Exception as e:
         logger.exception("Pipeline failed")
-        await status_msg.edit_text(f"Hiba: {e}")
+        try:
+            await status_msg.edit_text(f"❌ Hiba: {e}")
+        except Exception:
+            pass
+
+
+def _run_pipeline(url: str, sync_status, flush_pending):
+    """Run pipeline in executor thread, flushing pending status at the end."""
+    try:
+        return pipeline.run(url, on_status=sync_status)
+    finally:
+        flush_pending()
 
 
 def main():

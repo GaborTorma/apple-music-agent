@@ -1,7 +1,9 @@
 import json
+import re
 import subprocess
 import os
 from dataclasses import dataclass
+from typing import Callable
 
 
 class DownloadError(Exception):
@@ -20,11 +22,16 @@ class DownloadResult:
 class BaseDownloader:
     """Common yt-dlp based downloader. Subclasses override _parse_metadata for platform-specific fields."""
 
-    def download(self, url: str, output_dir: str) -> DownloadResult:
+    def download(
+        self,
+        url: str,
+        output_dir: str,
+        on_progress: Callable[[float], None] | None = None,
+    ) -> DownloadResult:
         meta = self._extract_metadata(url)
         title, artist, duration = self._parse_metadata(meta)
 
-        audio_path = self._download_audio(url, output_dir)
+        audio_path = self._download_audio(url, output_dir, on_progress=on_progress)
         cover_path = self._download_thumbnail(url, output_dir)
 
         return DownloadResult(
@@ -56,21 +63,37 @@ class BaseDownloader:
         except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
             raise DownloadError(f"Nem sikerült a metaadatokat kinyerni: {e}") from e
 
-    def _download_audio(self, url: str, output_dir: str) -> str:
+    def _download_audio(
+        self,
+        url: str,
+        output_dir: str,
+        on_progress: Callable[[float], None] | None = None,
+    ) -> str:
         audio_path = os.path.join(output_dir, "audio.%(ext)s")
         cmd = [
             "yt-dlp",
             "--no-playlist",
             "-x",
             "--audio-format", "best",
+            "--newline",
             "-o", audio_path,
             "--no-post-overwrites",
             url,
         ]
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            raise DownloadError(f"yt-dlp hiba: {e.stderr}") from e
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            )
+            for line in proc.stdout:
+                if on_progress and "[download]" in line:
+                    m = re.search(r"(\d+\.?\d*)%", line)
+                    if m:
+                        on_progress(float(m.group(1)))
+            proc.wait()
+            if proc.returncode != 0:
+                raise DownloadError(f"yt-dlp hiba (exit code {proc.returncode})")
+        except OSError as e:
+            raise DownloadError(f"yt-dlp hiba: {e}") from e
 
         actual_audio = self._find_audio_file(output_dir)
         if not actual_audio:

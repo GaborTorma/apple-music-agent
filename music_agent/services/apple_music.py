@@ -27,12 +27,21 @@ def add_to_library(m4a_path: str) -> str:
     return persistent_id
 
 
-def wait_for_icloud_sync(persistent_id: str) -> bool:
-    """Poll iCloud Music Library status. Returns True if synced, False if timed out."""
+def wait_for_icloud_sync(
+    persistent_id: str,
+    on_progress: 'Callable[[float, float], None] | None' = None,
+) -> bool:
+    """Poll iCloud Music Library status. Returns True if synced, False if timed out.
+
+    on_progress(elapsed_seconds, timeout_seconds) is called each poll cycle.
+    """
     start = time.time()
     synced_statuses = {"matched", "uploaded", "purchased", "loaded"}
 
     while time.time() - start < config.ICLOUD_POLL_TIMEOUT_SECONDS:
+        elapsed = time.time() - start
+        if on_progress:
+            on_progress(elapsed, config.ICLOUD_POLL_TIMEOUT_SECONDS)
         status = _get_cloud_status(persistent_id)
         if status and status.lower() in synced_statuses:
             return True
