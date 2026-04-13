@@ -44,6 +44,10 @@ URL_PATTERNS = {
 # Minimum interval between Telegram message edits (seconds)
 _MIN_EDIT_INTERVAL = 1
 
+_STOP_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("Leállítás", callback_data="cancel_pipeline")],
+])
+
 
 def _is_allowed(user_id: int) -> bool:
     return user_id in config.ALLOWED_USER_IDS
@@ -151,12 +155,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    data = query.data
+
+    if data == "cancel_pipeline":
+        cancel_event = context.chat_data.get("cancel_event")
+        if cancel_event:
+            cancel_event.set()
+            await query.edit_message_text("🛑 Leállítva!")
+        else:
+            await query.edit_message_text("⚠️ Nincs futó folyamat.")
+        return
+
     pending = context.chat_data.get("pending")
     if not pending:
         await query.edit_message_text("⚠️ Nincs függő kérés.")
         return
-
-    data = query.data
 
     if data == "confirm_metadata":
         context.chat_data.pop("pending")
@@ -233,7 +246,7 @@ async def _run_with_metadata(context, url, title, artist, year, filename, status
     def sync_status(msg: str):
         nonlocal last_edit_time, last_text, pending_text
 
-        if msg == last_text:
+        if cancel_event.is_set() or msg == last_text:
             return
 
         now = time.monotonic()
@@ -245,7 +258,7 @@ async def _run_with_metadata(context, url, title, artist, year, filename, status
         last_text = msg
         last_edit_time = now
         future = asyncio.run_coroutine_threadsafe(
-            status_msg.edit_text(msg), loop,
+            status_msg.edit_text(msg, reply_markup=_STOP_KEYBOARD), loop,
         )
         try:
             future.result(timeout=5)
@@ -279,8 +292,9 @@ async def _run_with_metadata(context, url, title, artist, year, filename, status
 
     except PipelineCancelled:
         logger.info("Pipeline cancelled by user")
+        await asyncio.sleep(0.5)
         try:
-            await status_msg.delete()
+            await status_msg.edit_text("🛑 Leállítva!")
         except Exception:
             pass
 
@@ -331,7 +345,7 @@ def main():
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
     app.post_init = post_init
     app.add_handler(CommandHandler("stop", stop_command))
-    app.add_handler(CallbackQueryHandler(handle_callback, pattern="^(confirm_metadata|edit_.+)$"))
+    app.add_handler(CallbackQueryHandler(handle_callback, pattern="^(confirm_metadata|cancel_pipeline|edit_.+)$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("Bot started, listening for messages...")
