@@ -57,8 +57,8 @@ async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cancelled = False
 
     # Cancel pending metadata confirmation
-    context.user_data.pop("editing", None)
-    pending = context.user_data.pop("pending", None)
+    context.chat_data.pop("editing", None)
+    pending = context.chat_data.pop("pending", None)
     if pending:
         cancelled = True
         try:
@@ -67,7 +67,7 @@ async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     # Cancel running pipeline
-    cancel_event = context.user_data.get("cancel_event")
+    cancel_event = context.chat_data.get("cancel_event")
     if cancel_event:
         cancelled = True
         cancel_event.set()
@@ -87,7 +87,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url, platform = _find_url(text)
 
     # Check if user is editing a field for a pending request
-    editing = context.user_data.get("editing")
+    editing = context.chat_data.get("editing")
     if editing and not url:
         return await _handle_field_edit(update, context, text)
     if not url:
@@ -132,7 +132,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Store pending request
-    context.user_data["pending"] = {
+    context.chat_data["pending"] = {
         "url": url,
         "platform": platform,
         "title": meta.title,
@@ -143,7 +143,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "original_msg": update.message,
     }
 
-    await _show_confirmation(status_msg, context.user_data["pending"])
+    await _show_confirmation(status_msg, context.chat_data["pending"])
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -151,7 +151,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    pending = context.user_data.get("pending")
+    pending = context.chat_data.get("pending")
     if not pending:
         await query.edit_message_text("⚠️ Nincs függő kérés.")
         return
@@ -159,7 +159,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
 
     if data == "confirm_metadata":
-        context.user_data.pop("pending")
+        context.chat_data.pop("pending")
         await _run_with_metadata(
             context,
             pending["url"],
@@ -172,7 +172,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     elif data.startswith("edit_"):
         field = data[5:]  # artist, title, year, filename
-        context.user_data["editing"] = field
+        context.chat_data["editing"] = field
         field_labels = {
             "artist": "Előadó",
             "title": "Cím",
@@ -186,8 +186,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _handle_field_edit(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
     """Handle user typing a new value for a pending field edit."""
-    pending = context.user_data.get("pending")
-    editing = context.user_data.pop("editing", None)
+    pending = context.chat_data.get("pending")
+    editing = context.chat_data.pop("editing", None)
     if not pending or not editing:
         return
 
@@ -223,7 +223,7 @@ async def _show_confirmation(status_msg, pending: dict):
 async def _run_with_metadata(context, url, title, artist, year, filename, status_msg, original_msg):
     """Run the pipeline with confirmed metadata."""
     cancel_event = threading.Event()
-    context.user_data["cancel_event"] = cancel_event
+    context.chat_data["cancel_event"] = cancel_event
 
     loop = asyncio.get_event_loop()
     last_edit_time = 0.0
@@ -292,7 +292,7 @@ async def _run_with_metadata(context, url, title, artist, year, filename, status
             pass
 
     finally:
-        context.user_data.pop("cancel_event", None)
+        context.chat_data.pop("cancel_event", None)
 
 
 def _run_pipeline(url, title, artist, year, filename, sync_status, flush_pending, cancel_event):
