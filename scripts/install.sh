@@ -83,8 +83,11 @@ if [[ "$MODE" == "remote" ]]; then
     echo "==> Installing on ${REMOTE_TARGET}..."
     # Copy scripts to remote /tmp (repo may not exist there yet)
     scp -q "$SCRIPT_DIR/config.sh" "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/$PLIST_NAME" "$SCRIPT_DIR/run-agent.sh" "${REMOTE_TARGET}:/tmp/"
-    ssh -t "$REMOTE_TARGET" "bash /tmp/install.sh --local"
-    exit $?
+    REMOTE_STATUS=0
+    ssh -t "$REMOTE_TARGET" "bash /tmp/install.sh --local" || REMOTE_STATUS=$?
+    # Clean up temp files on remote (always, even on failure)
+    ssh "$REMOTE_TARGET" "rm -f /tmp/config.sh /tmp/install.sh /tmp/$PLIST_NAME /tmp/run-agent.sh" || true
+    exit "$REMOTE_STATUS"
 fi
 
 # --- Config ---
@@ -223,6 +226,13 @@ info "Loading service..."
 launchctl bootout "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
 sleep 1
 launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"
+
+# --- Cleanup temp files (if this script was run from /tmp) ---
+
+if [[ "$SCRIPT_DIR" == "/tmp" ]]; then
+    info "Cleaning up /tmp..."
+    rm -f /tmp/config.sh /tmp/install.sh /tmp/$PLIST_NAME /tmp/run-agent.sh
+fi
 
 # --- Status ---
 
