@@ -249,7 +249,7 @@ echo ""
 info "Installation complete!"
 echo ""
 echo "Service status:"
-launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>&1 | head -15
+launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>&1 | head -15 || true
 echo ""
 echo "Logs:"
 echo "  stdout: $LOG_DIR/stdout.log"
