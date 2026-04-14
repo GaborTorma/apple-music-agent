@@ -61,7 +61,7 @@ music_agent/
 - ffmpeg cover art must use `-c:v mjpeg` codec, not h264 (m4a container rejects h264)
 - yt-dlp output template uses `%(ext)s` — actual file found by scanning directory
 - Special chars in titles (& parentheses quotes) break AppleScript `whose name contains`. Avoid name-based search, use persistent ID instead
-- System Events (menu clicks) requires Accessibility permission for Terminal.app
+- Automation permission required: Python 3.14 → Music.app (granted in System Settings > Privacy & Security > Automation; prompts on first AppleScript call in an active GUI session)
 
 ## Commands
 

@@ -35,12 +35,11 @@ cp .env.example .env
 
 ### macOS permissions
 
-The bot uses AppleScript to control Apple Music. Grant the following permissions in **System Settings → Privacy & Security**:
+The bot uses AppleScript to control Apple Music. Grant the following permission in **System Settings → Privacy & Security**:
 
-- **Accessibility**: Add Terminal.app (or the app running the bot)
-- **Automation**: Allow Terminal.app to control **Music**
+- **Automation**: Allow **Python 3.14** to control **Music**
 
-These prompts may appear automatically on first run — click "Allow".
+The prompt appears automatically on first run — click "Allow".
 
 Edit `.env`:
 
