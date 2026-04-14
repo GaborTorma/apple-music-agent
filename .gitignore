@@ -5,3 +5,4 @@ __pycache__/
 .DS_Store
 torma.ai.apple-music-agent
 scripts/remote-deploy.sh
+Makefile.local

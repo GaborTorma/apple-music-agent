@@ -44,3 +44,6 @@ ssh:
 ## Edit .env on remote
 env:
 	ssh -t $(REMOTE_HOST) '$${EDITOR:-nano} ~/$(INSTALL_DIR)/.env'
+
+# Optional local overrides (gitignored)
+-include Makefile.local
