@@ -225,7 +225,16 @@ plutil -lint "$PLIST_PATH" || error "Plist validation failed"
 info "Loading service..."
 launchctl bootout "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
 sleep 1
-launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"
+
+BOOTSTRAP_OUTPUT=$(launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH" 2>&1) || BOOTSTRAP_EXIT=$?
+if [[ "${BOOTSTRAP_EXIT:-0}" -ne 0 ]]; then
+    if echo "$BOOTSTRAP_OUTPUT" | grep -q "Domain does not support"; then
+        info "No active GUI session — service will start on next login for user $(id -un)"
+    else
+        echo "$BOOTSTRAP_OUTPUT" >&2
+        error "launchctl bootstrap failed"
+    fi
+fi
 
 # --- Cleanup temp files (if this script was run from /tmp) ---
 
