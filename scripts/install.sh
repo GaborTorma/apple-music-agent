@@ -249,7 +249,11 @@ echo ""
 info "Installation complete!"
 echo ""
 echo "Service status:"
-launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>&1 | head -15 || true
+if STATUS_OUTPUT=$(launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>&1); then
+    echo "$STATUS_OUTPUT" | head -15
+else
+    echo "  (no active GUI session — status unavailable until user login)"
+fi
 echo ""
 echo "Logs:"
 echo "  stdout: $LOG_DIR/stdout.log"
