@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
-torma.ai.apple-music-agent
+
+# local files
 scripts/remote-deploy.sh
 Makefile.local
