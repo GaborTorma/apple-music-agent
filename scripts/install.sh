@@ -129,13 +129,6 @@ for pkg in python3 yt-dlp ffmpeg; do
     fi
 done
 
-if ! command -v ollama &>/dev/null; then
-    echo ""
-    echo "WARNING: ollama is not installed."
-    echo "  Install manually: brew install ollama"
-    echo ""
-fi
-
 # --- Clone or update repo ---
 
 if [[ -d "$INSTALL_DIR/.git" ]]; then
@@ -178,22 +171,26 @@ if [[ ! -f "$INSTALL_DIR/.env" ]]; then
 
     read -rp "MUSIC_DIR (leave empty for temp dir): " MUSIC_DIR_VAL
 
-    read -rp "OLLAMA_HOST [http://localhost:11434]: " OLLAMA_HOST_VAL
-    OLLAMA_HOST_VAL="${OLLAMA_HOST_VAL:-http://localhost:11434}"
+    read -rp "OPENROUTER_API_KEY (leave empty to skip AI): " OPENROUTER_API_KEY_VAL
 
-    read -rp "OLLAMA_MODEL [gemma4:e2b]: " OLLAMA_MODEL_VAL
-    OLLAMA_MODEL_VAL="${OLLAMA_MODEL_VAL:-gemma4:e2b}"
+    read -rp "OPENROUTER_MODEL [google/gemma-4-31b-it:free]: " OPENROUTER_MODEL_VAL
+    OPENROUTER_MODEL_VAL="${OPENROUTER_MODEL_VAL:-google/gemma-4-31b-it:free}"
 
-    read -rp "OLLAMA_API_KEY (leave empty if not needed): " OLLAMA_API_KEY_VAL
+    read -rp "OPENROUTER_APP_NAME [apple-music-agent]: " OPENROUTER_APP_NAME_VAL
+    OPENROUTER_APP_NAME_VAL="${OPENROUTER_APP_NAME_VAL:-apple-music-agent}"
+
+    read -rp "OPENROUTER_APP_URL [https://github.com/gabortorma/apple-music-agent]: " OPENROUTER_APP_URL_VAL
+    OPENROUTER_APP_URL_VAL="${OPENROUTER_APP_URL_VAL:-https://github.com/gabortorma/apple-music-agent}"
 
     cat > "$INSTALL_DIR/.env" <<EOF
 TELEGRAM_BOT_TOKEN=$BOT_TOKEN
 ALLOWED_USER_IDS=$USER_IDS
 PLAYLIST_NAME=$PLAYLIST
 MUSIC_DIR=$MUSIC_DIR_VAL
-OLLAMA_HOST=$OLLAMA_HOST_VAL
-OLLAMA_MODEL=$OLLAMA_MODEL_VAL
-OLLAMA_API_KEY=$OLLAMA_API_KEY_VAL
+OPENROUTER_API_KEY=$OPENROUTER_API_KEY_VAL
+OPENROUTER_MODEL=$OPENROUTER_MODEL_VAL
+OPENROUTER_APP_NAME=$OPENROUTER_APP_NAME_VAL
+OPENROUTER_APP_URL=$OPENROUTER_APP_URL_VAL
 EOF
 
     info ".env created"
