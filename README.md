@@ -1,6 +1,6 @@
 # telegram-to-apple-music
 
-Telegram bot that downloads audio from YouTube, SoundCloud, and Mixcloud links, converts to AAC m4a with dynamic bitrate (max 192kbps/195MB), adds to Apple Music library, waits for iCloud Music Library sync, and adds to a configured playlist. Uses local AI (Ollama) to suggest clean metadata (artist, title, year, filename). Built for macOS with yt-dlp, ffmpeg, AppleScript, and Ollama.
+Telegram bot that downloads audio from YouTube, SoundCloud, and Mixcloud links, converts to AAC m4a with dynamic bitrate (max 192kbps/195MB), adds to Apple Music library, waits for iCloud Music Library sync, and adds to a configured playlist. Uses OpenRouter (cloud LLM) to suggest clean metadata (artist, title, year, filename). Built for macOS with yt-dlp, ffmpeg, AppleScript, and OpenRouter.
 
 ## Requirements
 
@@ -9,7 +9,7 @@ Telegram bot that downloads audio from YouTube, SoundCloud, and Mixcloud links, 
 - Python 3.12+
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [ffmpeg](https://ffmpeg.org/) (with AAC encoder)
-- [Ollama](https://ollama.com/) with a pulled model (e.g. `gemma4:e2b`)
+- [OpenRouter](https://openrouter.ai/) API key (optional — AI metadata is skipped if not set)
 
 ### Install system dependencies
 
@@ -48,9 +48,10 @@ TELEGRAM_BOT_TOKEN=your_bot_token_here
 ALLOWED_USER_IDS=123456789
 PLAYLIST_NAME=Futás
 MUSIC_DIR=/Users/Shared/Music
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=gemma4:e2b
-OLLAMA_API_KEY=your_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_MODEL=google/gemma-4-31b-it:free
+OPENROUTER_APP_NAME=apple-music-agent
+OPENROUTER_APP_URL=https://github.com/gabortorma/apple-music-agent
 ```
 
 ### Get your Telegram user ID
@@ -122,9 +123,10 @@ If the calculated bitrate drops below 64 kbps, a warning is sent.
 | `ALLOWED_USER_IDS`   | —                        | Comma-separated Telegram user IDs                            |
 | `PLAYLIST_NAME`      | `Futás`                  | Target Apple Music playlist name                             |
 | `MUSIC_DIR`          | _(empty)_                | Persistent music directory. If empty, files stay in temp dir |
-| `OLLAMA_HOST`        | `http://localhost:11434` | Ollama API URL                                               |
-| `OLLAMA_MODEL`       | `gemma4:e2b`             | Ollama model for metadata suggestions                        |
-| `OLLAMA_API_KEY`     | _(empty)_                | Ollama API key (optional, skips AI if not set)               |
+| `OPENROUTER_API_KEY` | _(empty)_                | OpenRouter API key (optional, skips AI if not set)           |
+| `OPENROUTER_MODEL`   | `google/gemma-4-31b-it:free` | OpenRouter model slug for metadata suggestions           |
+| `OPENROUTER_APP_NAME`| `apple-music-agent`      | App name shown in OpenRouter dashboard (X-Title header)      |
+| `OPENROUTER_APP_URL` | GitHub repo URL          | App URL for OpenRouter rankings (HTTP-Referer header)        |
 
 Additional settings in `music_agent/config.py`:
 
@@ -147,11 +149,10 @@ make install
 
 This will SSH to the Mac Mini and:
 
-- Install system dependencies (python3, yt-dlp, ffmpeg, ollama via Homebrew)
-- Pull the default Ollama model (gemma4:e2b)
+- Install system dependencies (python3, yt-dlp, ffmpeg via Homebrew)
 - Clone the repository to `~/Agents/Music`
 - Create a Python virtual environment and install dependencies
-- Prompt for `.env` values (bot token, user IDs, playlist name, Ollama config)
+- Prompt for `.env` values (bot token, user IDs, playlist name, OpenRouter config)
 - Register and start a launchd LaunchAgent service
 
 ### Deploy updates
@@ -199,7 +200,7 @@ Remote host is configured in `Makefile` (`REMOTE_HOST`), all other settings in `
 │   │   └── mixcloud.py             # MixcloudDownloader
 │   └── services/
 │       ├── apple_music.py          # AppleScript integration
-│       └── ai_metadata.py          # Ollama AI metadata enrichment
+│       └── ai_metadata.py          # OpenRouter AI metadata enrichment
 ├── .env.example
 └── requirements.txt
 ```

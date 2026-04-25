@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import urllib.request
 import urllib.error
 
@@ -28,31 +29,40 @@ Respond with ONLY a JSON object, no markdown, no explanation:
 
 
 def suggest_metadata(raw_meta: dict) -> dict | None:
-    """Call Ollama to suggest clean metadata from raw yt-dlp metadata.
+    """Call OpenRouter to suggest clean metadata from raw yt-dlp metadata.
 
     Returns dict with keys: title, artist, year, filename.
-    Returns None if Ollama is unavailable or fails.
+    Returns None if OpenRouter is unavailable or fails.
     """
+    if not config.OPENROUTER_API_KEY:
+        logger.warning("OPENROUTER_API_KEY not set, skipping AI metadata suggestion")
+        return None
+
     user_prompt = _build_prompt(raw_meta)
 
     try:
-        result = _call_ollama(user_prompt)
+        result = _call_openrouter(user_prompt)
     except Exception:
-        logger.warning("Ollama not available, skipping AI metadata suggestion")
+        logger.warning("OpenRouter not available, skipping AI metadata suggestion")
         return None
 
     try:
-        parsed = json.loads(result)
+        parsed = json.loads(_strip_code_fence(result))
         if not isinstance(parsed, dict):
             return None
-        # Validate required keys
         for key in ("title", "artist", "year", "filename"):
             if key not in parsed or not isinstance(parsed[key], str):
                 return None
         return parsed
     except (json.JSONDecodeError, TypeError):
-        logger.warning("Failed to parse Ollama response: %s", result[:200])
+        logger.warning("Failed to parse OpenRouter response: %s", result[:200])
         return None
+
+
+def _strip_code_fence(text: str) -> str:
+    """Strip ```json ... ``` or ``` ... ``` fences some models wrap JSON in."""
+    m = re.match(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", text, re.DOTALL)
+    return m.group(1) if m else text
 
 
 def _build_prompt(meta: dict) -> str:
@@ -70,25 +80,30 @@ def _build_prompt(meta: dict) -> str:
     return json.dumps(fields, ensure_ascii=False)
 
 
-def _call_ollama(prompt: str) -> str:
-    """Make HTTP request to Ollama generate API."""
-    url = f"{config.OLLAMA_HOST}/api/generate"
+_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def _call_openrouter(prompt: str) -> str:
+    """Make HTTP request to OpenRouter chat/completions API (OpenAI-compatible)."""
     payload = json.dumps({
-        "model": config.OLLAMA_MODEL,
-        "prompt": prompt,
-        "system": _SYSTEM_PROMPT,
-        "stream": False,
-        "options": {
-            "temperature": 0.1,
-        },
+        "model": config.OPENROUTER_MODEL,
+        "messages": [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.1,
+        "response_format": {"type": "json_object"},
     }).encode("utf-8")
 
-    headers = {"Content-Type": "application/json"}
-    if config.OLLAMA_API_KEY:
-        headers["Authorization"] = f"Bearer {config.OLLAMA_API_KEY}"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+        "X-Title": config.OPENROUTER_APP_NAME,
+        "HTTP-Referer": config.OPENROUTER_APP_URL,
+    }
 
     req = urllib.request.Request(
-        url,
+        _OPENROUTER_URL,
         data=payload,
         headers=headers,
         method="POST",
@@ -96,4 +111,4 @@ def _call_ollama(prompt: str) -> str:
 
     with urllib.request.urlopen(req, timeout=30) as resp:
         body = json.loads(resp.read().decode("utf-8"))
-        return body.get("response", "")
+        return body["choices"][0]["message"]["content"]
