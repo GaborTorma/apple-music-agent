@@ -329,8 +329,25 @@ def _find_url(text: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+async def _on_startup(app: Application) -> None:
+    text = "🎵 Music agent elindult."
+    for user_id in config.ALLOWED_USER_IDS:
+        if user_id <= 0:
+            continue
+        try:
+            await app.bot.send_message(chat_id=user_id, text=text)
+        except Exception as e:
+            logger.warning(f"Failed to send startup notification to {user_id}: {e}")
+
+
 def main():
-    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
+    app = (
+        Application.builder()
+        .token(config.TELEGRAM_BOT_TOKEN)
+        .concurrent_updates(True)
+        .post_init(_on_startup)
+        .build()
+    )
     app.add_handler(CallbackQueryHandler(handle_callback, pattern=r"^(confirm_metadata|cancel_pending|cancel:\d+|edit_.+)$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
