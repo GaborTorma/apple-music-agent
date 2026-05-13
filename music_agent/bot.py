@@ -1,4 +1,5 @@
 import asyncio
+import getpass
 import logging
 import re
 import threading
@@ -329,13 +330,27 @@ def _find_url(text: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+STARTUP_NOTIFICATION_TTL_SECONDS = 60
+
+
+async def _delete_after(bot, chat_id: int, message_id: int, delay: float) -> None:
+    await asyncio.sleep(delay)
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception as e:
+        logger.warning(f"Failed to delete startup notification {message_id} for {chat_id}: {e}")
+
+
 async def _on_startup(app: Application) -> None:
-    text = "🎵 Music agent elindult."
+    text = f"🎵 Music agent elindult ({getpass.getuser()})."
     for user_id in config.ALLOWED_USER_IDS:
         if user_id <= 0:
             continue
         try:
-            await app.bot.send_message(chat_id=user_id, text=text)
+            msg = await app.bot.send_message(chat_id=user_id, text=text)
+            asyncio.create_task(
+                _delete_after(app.bot, user_id, msg.message_id, STARTUP_NOTIFICATION_TTL_SECONDS)
+            )
         except Exception as e:
             logger.warning(f"Failed to send startup notification to {user_id}: {e}")
 
