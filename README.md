@@ -83,7 +83,7 @@ Send a YouTube, SoundCloud, or Mixcloud link to your bot on Telegram. The bot wi
 
 1. Extract metadata and use AI to suggest clean artist, title, year, and filename
 2. Show confirmation with per-field edit buttons — accept with ✅ OK or edit individually
-3. Download the audio (original format)
+3. Download the audio (original format) — retries up to 4 times on transient errors (YouTube intermittently returns HTTP 403 on the stream URL)
 4. Convert to AAC m4a with dynamic bitrate calculation
 5. Add to Apple Music library
 6. Wait for iCloud Music Library sync (polls every 60s, max 20 min)
@@ -180,7 +180,7 @@ make ssh         # SSH to Mac Mini
 - LaunchAgent: `com.torma.ai.apple-music-agent`
 - Auto-restarts on crash (`KeepAlive`)
 - Starts on login (`RunAtLoad`)
-- Logs: `~/Library/Logs/apple-music-agent/{stdout,stderr}.log`
+- Logs: `~/Library/Logs/com.torma.ai.apple-music-agent/{stdout,stderr}.log`
 
 Remote host is configured in `Makefile` (`REMOTE_HOST`), all other settings in `scripts/config.sh`.
 

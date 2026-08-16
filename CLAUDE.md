@@ -101,7 +101,7 @@ Runs on Mac Mini (`macclaw.local`) as launchd LaunchAgent. Deploy: `git push` �
 
 - Config: `scripts/config.sh` (install dir, service label, repo URL — Makefile derives from this)
 - Install dir: `~/Agents/Music`, service domain: `gui/$(id -u)` (user session, Apple Music needs GUI)
-- Logs: `~/Library/Logs/apple-music-agent/{stdout,stderr}.log`
+- Logs: `~/Library/Logs/com.torma.ai.apple-music-agent/{stdout,stderr}.log` (`make logs` still points at the legacy `apple-music-agent` dir)
 - `KeepAlive: true` + `ThrottleInterval: 10s` — auto-restart on crash
 - `RunAtLoad: true` — starts on login
 
