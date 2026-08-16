@@ -1,14 +1,40 @@
 import json
+import logging
 import re
 import subprocess
 import os
 import threading
+import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Callable
+
+logger = logging.getLogger(__name__)
+
+# How many non-progress yt-dlp output lines to keep for error reporting
+ERROR_TAIL_LINES = 15
+
+# YouTube intermittently answers 403 on the stream URL (~1 in 3 downloads). yt-dlp aborts
+# immediately on 4xx — only 5xx/transport errors go through its own --retries — but a fresh
+# invocation gets a new stream URL and resumes the .part file.
+DOWNLOAD_ATTEMPTS = 4
+RETRY_DELAY_SECONDS = 5  # multiplied by attempt number: 5s, 10s, 15s
+RETRYABLE_ERROR_RE = re.compile(
+    r"HTTP Error (403|429|5\d\d)|unable to download video data|timed out"
+    r"|Connection reset|Remote end closed|Connection aborted",
+    re.IGNORECASE,
+)
 
 
 class DownloadError(Exception):
     pass
+
+
+def _tail(lines) -> str:
+    """Pick the most informative output lines for a user-facing error message."""
+    lines = [ln.rstrip() for ln in lines if ln.strip()]
+    errors = [ln for ln in lines if "ERROR:" in ln]
+    return "\n".join(errors[-3:] if errors else lines[-5:])
 
 
 @dataclass
@@ -62,7 +88,13 @@ class BaseDownloader:
         try:
             result = subprocess.run(cmd, check=True, capture_output=True, text=True)
             return json.loads(result.stdout)
-        except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
+        except subprocess.CalledProcessError as e:
+            logger.error("yt-dlp metadata failed (exit %s):\n%s", e.returncode, e.stderr)
+            raise DownloadError(
+                f"Nem sikerült a metaadatokat kinyerni (exit code {e.returncode}):\n"
+                f"{_tail(e.stderr.splitlines())}"
+            ) from e
+        except json.JSONDecodeError as e:
             raise DownloadError(f"Nem sikerült a metaadatokat kinyerni: {e}") from e
 
     def _download_audio(
@@ -83,6 +115,41 @@ class BaseDownloader:
             "--no-post-overwrites",
             url,
         ]
+        for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+            returncode, output_tail = self._run_yt_dlp(cmd, on_progress, cancel_event)
+            if returncode == 0:
+                break
+
+            output = "\n".join(output_tail)
+            logger.error(
+                "yt-dlp download failed (attempt %s/%s, exit %s):\n%s",
+                attempt, DOWNLOAD_ATTEMPTS, returncode, output,
+            )
+            if attempt == DOWNLOAD_ATTEMPTS or not RETRYABLE_ERROR_RE.search(output):
+                raise DownloadError(
+                    f"yt-dlp hiba (exit code {returncode}):\n{_tail(output_tail)}"
+                )
+            delay = RETRY_DELAY_SECONDS * attempt
+            logger.info("Retrying download in %ss", delay)
+            if cancel_event is not None:
+                if cancel_event.wait(delay):
+                    raise DownloadError("Leállítva")
+            else:
+                time.sleep(delay)
+
+        actual_audio = self._find_audio_file(output_dir)
+        if not actual_audio:
+            raise DownloadError("Az audiófájl nem található a letöltés után")
+        return actual_audio
+
+    def _run_yt_dlp(
+        self,
+        cmd: list[str],
+        on_progress: Callable[[float], None] | None,
+        cancel_event: threading.Event | None,
+    ) -> tuple[int, deque[str]]:
+        """Run yt-dlp, forwarding progress. Returns (exit code, last non-progress output lines)."""
+        output_tail: deque[str] = deque(maxlen=ERROR_TAIL_LINES)
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -92,20 +159,17 @@ class BaseDownloader:
                     proc.terminate()
                     proc.wait()
                     raise DownloadError("Leállítva")
-                if on_progress and "[download]" in line:
+                is_progress = "[download]" in line and "%" in line
+                if not is_progress and line.strip():
+                    output_tail.append(line.rstrip())
+                if on_progress and is_progress:
                     m = re.search(r"(\d+\.?\d*)%", line)
                     if m:
                         on_progress(float(m.group(1)))
             proc.wait()
-            if proc.returncode != 0:
-                raise DownloadError(f"yt-dlp hiba (exit code {proc.returncode})")
+            return proc.returncode, output_tail
         except OSError as e:
             raise DownloadError(f"yt-dlp hiba: {e}") from e
-
-        actual_audio = self._find_audio_file(output_dir)
-        if not actual_audio:
-            raise DownloadError("Az audiófájl nem található a letöltés után")
-        return actual_audio
 
     def _find_audio_file(self, output_dir: str) -> str | None:
         for f in os.listdir(output_dir):
