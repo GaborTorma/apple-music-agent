@@ -15,6 +15,12 @@ MIN_BITRATE_KBPS = 64
 ICLOUD_POLL_INTERVAL_SECONDS = 10
 ICLOUD_POLL_TIMEOUT_SECONDS = 20 * 60  # 20 minutes
 
+# launchd never rotates its StandardOut/ErrorPath files, so the app log rotates itself
+LOG_DIR = os.path.expanduser("~/Library/Logs/com.torma.ai.apple-music-agent")
+LOG_FILE = os.path.join(LOG_DIR, "agent.log")
+LOG_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
+LOG_BACKUP_COUNT = 5
+
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
 OPENROUTER_APP_NAME = os.environ.get("OPENROUTER_APP_NAME", "apple-music-agent")

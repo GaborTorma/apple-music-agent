@@ -1,9 +1,12 @@
 import asyncio
 import getpass
 import logging
+import os
 import re
+import sys
 import threading
 import time
+from logging.handlers import RotatingFileHandler
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -20,10 +23,30 @@ from music_agent.pipeline import PipelineCancelled
 from music_agent.downloaders import MetadataResult, get_downloader
 from music_agent.services.ai_metadata import suggest_metadata
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
+def _setup_logging() -> None:
+    os.makedirs(config.LOG_DIR, exist_ok=True)
+    handlers: list[logging.Handler] = [
+        RotatingFileHandler(
+            config.LOG_FILE,
+            maxBytes=config.LOG_MAX_BYTES,
+            backupCount=config.LOG_BACKUP_COUNT,
+        )
+    ]
+    # Under launchd stderr is redirected to a file nothing rotates — log to the console
+    # only when running in a terminal.
+    if sys.stderr.isatty():
+        handlers.append(logging.StreamHandler())
+
+    logging.basicConfig(
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        level=logging.INFO,
+        handlers=handlers,
+    )
+    # httpx logs one INFO line per getUpdates poll (every 10s) — that alone grew the old log to 186 MB
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+_setup_logging()
 logger = logging.getLogger(__name__)
 
 # URL path segment: word chars, hyphens, dots, percent-encoded sequences (%XX)

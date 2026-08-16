@@ -1,8 +1,9 @@
 REMOTE_HOST := $(shell sed -n 's/^DEFAULT_REMOTE_HOST="\(.*\)"/\1/p' scripts/config.sh)
 SERVICE_LABEL := $(shell sed -n 's/^SERVICE_LABEL="\(.*\)"/\1/p' scripts/config.sh)
 INSTALL_DIR := $(shell sed -n 's|^INSTALL_DIR="$$HOME/\(.*\)"|\1|p' scripts/config.sh)
+LOG_DIR := ~/Library/Logs/$(SERVICE_LABEL)
 
-.PHONY: deploy install logs logs-stdout status restart stop tail ssh env
+.PHONY: deploy install logs logs-stderr status restart stop tail ssh env
 
 ## First-time setup (asks local/remote)
 install:
@@ -12,13 +13,13 @@ install:
 deploy:
 	./scripts/deploy.sh
 
-## Tail stderr logs on remote
+## Tail app logs on remote
 logs:
-	ssh $(REMOTE_HOST) 'tail -f ~/Library/Logs/apple-music-agent/stderr.log'
+	ssh $(REMOTE_HOST) 'tail -f $(LOG_DIR)/agent.log'
 
-## Tail stdout logs on remote
-logs-stdout:
-	ssh $(REMOTE_HOST) 'tail -f ~/Library/Logs/apple-music-agent/stdout.log'
+## Tail launchd stderr on remote (crashes and startup failures)
+logs-stderr:
+	ssh $(REMOTE_HOST) 'tail -f $(LOG_DIR)/stderr.log'
 
 ## Show remote service status
 status:
@@ -35,7 +36,7 @@ stop:
 ## Show last N lines of remote logs (default: 50)
 N ?= 50
 tail:
-	ssh $(REMOTE_HOST) 'tail -$(N) ~/Library/Logs/apple-music-agent/stderr.log'
+	ssh $(REMOTE_HOST) 'tail -$(N) $(LOG_DIR)/agent.log'
 
 ## Open SSH session to remote
 ssh:

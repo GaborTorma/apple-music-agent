@@ -113,7 +113,7 @@ if launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>&1 | grep -q 'pid = '; then
 else
     echo ""
     error "Service failed to start. Recent logs:"
-    tail -20 "$LOG_DIR/stderr.log"
+    tail -20 "$LOG_DIR/stderr.log" "$LOG_DIR/agent.log"
     exit 1
 fi
 
@@ -125,4 +125,4 @@ echo "  Commit: $(git -C "$INSTALL_DIR" log -1 --format='%h %s')"
 echo "  Time:   $(date '+%Y-%m-%d %H:%M:%S')"
 echo ""
 echo "=== Recent logs ==="
-tail -20 "$LOG_DIR/stderr.log"
+tail -20 "$LOG_DIR/agent.log"

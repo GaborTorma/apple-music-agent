@@ -46,13 +46,14 @@ music_agent/
 - Dynamic bitrate: `min(192, floor(195MB * 8 * 0.95 / duration / 1000))` kbps
 - `MUSIC_DIR` env var: if set, files persist there; if empty, files stay in temp dir
 - `add POSIX file` returns track reference → persistent ID extracted directly (no name-based search)
-- iCloud sync polling: 60s interval, 20 min timeout, continues on timeout
+- iCloud sync polling: 10s interval, 20 min timeout, continues on timeout
 - Pipeline cleans up temp dir only when `MUSIC_DIR` is set (file already moved out)
 - Bot runs sync pipeline in `run_in_executor` to avoid blocking event loop
 - `get_downloader(url)` factory auto-selects downloader based on URL domain
 - AI metadata: OpenRouter chat/completions API (OpenAI-compatible JSON), no SDK needed. Graceful fallback if API key missing or request fails
 - Bot two-phase metadata: 1) yt-dlp extract → 2) AI enrichment → user confirmation with per-field edit buttons
 - Metadata fields: title, artist, year, filename — all editable via inline keyboard buttons
+- Logging (`bot.py:_setup_logging`): rotating `agent.log` always, console handler only when `sys.stderr.isatty()` (launchd never rotates its own redirect files). `httpx` is pinned to WARNING — its per-poll INFO line grew the old log to 186 MB
 
 ## Gotchas
 
@@ -93,7 +94,7 @@ All in `.env`:
 - `OPENROUTER_APP_NAME` — app name for OpenRouter dashboard (default: `apple-music-agent`, sent as `X-Title`)
 - `OPENROUTER_APP_URL` — app URL for OpenRouter rankings (default: GitHub repo, sent as `HTTP-Referer`)
 
-Constants in `config.py`: max bitrate 192kbps, max file size 195MB, min bitrate 64kbps, poll interval 60s, poll timeout 20min.
+Constants in `config.py`: max bitrate 192kbps, max file size 195MB, min bitrate 64kbps, poll interval 10s, poll timeout 20min.
 
 ## Deployment
 
@@ -101,7 +102,7 @@ Runs on Mac Mini (`macclaw.local`) as launchd LaunchAgent. Deploy: `git push` �
 
 - Config: `scripts/config.sh` (install dir, service label, repo URL — Makefile derives from this)
 - Install dir: `~/Agents/Music`, service domain: `gui/$(id -u)` (user session, Apple Music needs GUI)
-- Logs: `~/Library/Logs/com.torma.ai.apple-music-agent/{stdout,stderr}.log` (`make logs` still points at the legacy `apple-music-agent` dir)
+- Logs: `~/Library/Logs/com.torma.ai.apple-music-agent/` — `agent.log` (app, rotating 5MB × 5) and launchd's `stdout/stderr.log` (crashes only)
 - `KeepAlive: true` + `ThrottleInterval: 10s` — auto-restart on crash
 - `RunAtLoad: true` — starts on login
 

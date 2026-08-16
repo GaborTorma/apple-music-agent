@@ -86,7 +86,7 @@ Send a YouTube, SoundCloud, or Mixcloud link to your bot on Telegram. The bot wi
 3. Download the audio (original format) — retries up to 4 times on transient errors (YouTube intermittently returns HTTP 403 on the stream URL)
 4. Convert to AAC m4a with dynamic bitrate calculation
 5. Add to Apple Music library
-6. Wait for iCloud Music Library sync (polls every 60s, max 20 min)
+6. Wait for iCloud Music Library sync (polls every 10s, max 20 min)
 7. Add to the configured playlist
 
 Status updates are sent back via Telegram at each step.
@@ -134,7 +134,7 @@ Additional settings in `music_agent/config.py`:
 | ------------------------------ | ------- | ---------------------------- |
 | `MAX_BITRATE_KBPS`             | 192     | Maximum audio bitrate        |
 | `MAX_FILE_SIZE_BYTES`          | 195 MB  | Maximum output file size     |
-| `ICLOUD_POLL_INTERVAL_SECONDS` | 60      | iCloud sync check interval   |
+| `ICLOUD_POLL_INTERVAL_SECONDS` | 10      | iCloud sync check interval   |
 | `ICLOUD_POLL_TIMEOUT_SECONDS`  | 1200    | iCloud sync timeout (20 min) |
 
 ## Deployment (Mac Mini)
@@ -166,11 +166,12 @@ Pulls the latest code from GitHub and restarts the service.
 ### Other commands
 
 ```bash
-make logs        # Tail stderr logs (real-time)
+make logs        # Tail app log (real-time)
 make status      # Show service status
 make restart     # Restart service
 make stop        # Stop service
-make tail N=100  # Last N lines of logs
+make logs-stderr # Tail launchd stderr (crashes)
+make tail N=100  # Last N lines of the app log
 make env         # Edit .env on remote
 make ssh         # SSH to Mac Mini
 ```
@@ -180,9 +181,9 @@ make ssh         # SSH to Mac Mini
 - LaunchAgent: `com.torma.ai.apple-music-agent`
 - Auto-restarts on crash (`KeepAlive`)
 - Starts on login (`RunAtLoad`)
-- Logs: `~/Library/Logs/com.torma.ai.apple-music-agent/{stdout,stderr}.log`
+- Logs: `~/Library/Logs/com.torma.ai.apple-music-agent/` — `agent.log` (app log, rotates at 5 MB, 5 backups) plus launchd's `stdout.log` / `stderr.log`, which now only receive crash output
 
-Remote host is configured in `Makefile` (`REMOTE_HOST`), all other settings in `scripts/config.sh`.
+All settings — remote host included — come from `scripts/config.sh`; the `Makefile` derives its variables from it.
 
 ## Project structure
 
