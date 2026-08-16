@@ -78,7 +78,7 @@ if [[ "$MODE" == "remote" ]]; then
     if [[ -z "${PLIST_NAME:-}" && -f "$SCRIPT_DIR/config.sh" ]]; then
         source "$SCRIPT_DIR/config.sh"
     fi
-    PLIST_NAME="${PLIST_NAME:-com.torma.ai.apple-music-agent.plist}"
+    PLIST_NAME="${PLIST_NAME:-ai.torma.apple-music-agent.plist}"
 
     echo "==> Installing on ${REMOTE_TARGET}..."
     # Copy scripts to remote /tmp (repo may not exist there yet)
@@ -145,7 +145,7 @@ fi
 
 RUN_SCRIPT="$INSTALL_DIR/scripts/run-agent.sh"
 [[ -f "$RUN_SCRIPT" ]] || { cp /tmp/run-agent.sh "$INSTALL_DIR/scripts/"; RUN_SCRIPT="$INSTALL_DIR/scripts/run-agent.sh"; }
-ln -sf "$RUN_SCRIPT" "$INSTALL_DIR/torma.ai.apple-music-agent"
+ln -sf "$RUN_SCRIPT" "$INSTALL_DIR/ai.torma.apple-music-agent"
 
 # --- Python venv ---
 

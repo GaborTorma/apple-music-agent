@@ -16,7 +16,7 @@ ICLOUD_POLL_INTERVAL_SECONDS = 10
 ICLOUD_POLL_TIMEOUT_SECONDS = 20 * 60  # 20 minutes
 
 # launchd never rotates its StandardOut/ErrorPath files, so the app log rotates itself
-LOG_DIR = os.path.expanduser("~/Library/Logs/com.torma.ai.apple-music-agent")
+LOG_DIR = os.path.expanduser("~/Library/Logs/ai.torma.apple-music-agent")
 LOG_FILE = os.path.join(LOG_DIR, "agent.log")
 LOG_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
 LOG_BACKUP_COUNT = 5

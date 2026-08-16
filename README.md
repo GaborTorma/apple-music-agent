@@ -178,10 +178,10 @@ make ssh         # SSH to Mac Mini
 
 ### Service details
 
-- LaunchAgent: `com.torma.ai.apple-music-agent`
+- LaunchAgent: `ai.torma.apple-music-agent`
 - Auto-restarts on crash (`KeepAlive`)
 - Starts on login (`RunAtLoad`)
-- Logs: `~/Library/Logs/com.torma.ai.apple-music-agent/` — `agent.log` (app log, rotates at 5 MB, 5 backups) plus launchd's `stdout.log` / `stderr.log`, which now only receive crash output
+- Logs: `~/Library/Logs/ai.torma.apple-music-agent/` — `agent.log` (app log, rotates at 5 MB, 5 backups) plus launchd's `stdout.log` / `stderr.log`, which now only receive crash output
 
 All settings — remote host included — come from `scripts/config.sh`; the `Makefile` derives its variables from it.
 
