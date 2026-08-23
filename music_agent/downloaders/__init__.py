@@ -9,6 +9,8 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Callable
 
+from music_agent.services import ytdlp_update
+
 logger = logging.getLogger(__name__)
 
 # How many non-progress yt-dlp output lines to keep for error reporting
@@ -55,11 +57,14 @@ class BaseDownloader:
         output_dir: str,
         on_progress: Callable[[float], None] | None = None,
         cancel_event: threading.Event | None = None,
+        on_notice: Callable[[str], None] | None = None,
     ) -> DownloadResult:
         meta = self._extract_metadata(url)
         title, artist, duration = self._parse_metadata(meta)
 
-        audio_path = self._download_audio(url, output_dir, on_progress=on_progress, cancel_event=cancel_event)
+        audio_path = self._download_audio(
+            url, output_dir, on_progress=on_progress, cancel_event=cancel_event, on_notice=on_notice,
+        )
         cover_path = self._download_thumbnail(url, output_dir)
 
         return DownloadResult(
@@ -103,6 +108,7 @@ class BaseDownloader:
         output_dir: str,
         on_progress: Callable[[float], None] | None = None,
         cancel_event: threading.Event | None = None,
+        on_notice: Callable[[str], None] | None = None,
     ) -> str:
         audio_path = os.path.join(output_dir, "audio.%(ext)s")
         cmd = [
@@ -129,7 +135,14 @@ class BaseDownloader:
                 raise DownloadError(
                     f"yt-dlp hiba (exit code {returncode}):\n{_tail(output_tail)}"
                 )
-            delay = RETRY_DELAY_SECONDS * attempt
+            # A stale yt-dlp can 403 on every attempt for days, until a release catches up
+            if on_notice:
+                on_notice("yt-dlp frissítés keresése...")
+            new_version = ytdlp_update.maybe_update()
+            if new_version and on_notice:
+                on_notice(f"yt-dlp {new_version}, újrapróbálom...")
+
+            delay = 0 if new_version else RETRY_DELAY_SECONDS * attempt
             logger.info("Retrying download in %ss", delay)
             if cancel_event is not None:
                 if cancel_event.wait(delay):

@@ -38,7 +38,8 @@ music_agent/
 └── services/
     ├── __init__.py
     ├── apple_music.py     — AppleScript integration
-    └── ai_metadata.py     — OpenRouter AI metadata enrichment
+    ├── ai_metadata.py     — OpenRouter AI metadata enrichment
+    └── ytdlp_update.py    — brew-based yt-dlp upgrade after a failed download
 ```
 
 ## Important patterns
@@ -61,7 +62,8 @@ music_agent/
 - JXA `duplicate` to user playlist fails. Use AppleScript `duplicate` within `tell library playlist 1`
 - ffmpeg cover art must use `-c:v mjpeg` codec, not h264 (m4a container rejects h264)
 - yt-dlp output template uses `%(ext)s` — actual file found by scanning directory
-- YouTube intermittently returns `HTTP Error 403` on the stream URL (~1 in 3 downloads). yt-dlp does **not** retry 4xx (its `--retries` only covers 5xx/transport), so `_download_audio` re-invokes yt-dlp itself: 4 attempts, 5/10/15s backoff, only for retryable output patterns. A fresh invocation gets a new stream URL and resumes the `.part` file
+- YouTube returns `HTTP Error 403` on the stream URL two ways: intermittently (~1 in 3 downloads, a fresh invocation gets a new stream URL) and persistently for days when YouTube changes something a yt-dlp release has not caught up with. yt-dlp does **not** retry 4xx (its `--retries` only covers 5xx/transport), so `_download_audio` re-invokes yt-dlp itself: 4 attempts, 5/10/15s backoff, only for retryable output patterns, and it resumes the `.part` file
+- After a retryable download failure, `services/ytdlp_update.maybe_update()` upgrades yt-dlp (at most every 6h) and the next attempt starts immediately. `yt-dlp -U` refuses to update a Homebrew install (`_NON_UPDATEABLE_REASONS`), so the update goes through `brew update && brew upgrade yt-dlp` — ~8s when a new version exists
 - Special chars in titles (& parentheses quotes) break AppleScript `whose name contains`. Avoid name-based search, use persistent ID instead
 - Automation permission required: Python 3.14 → Music.app (granted in System Settings > Privacy & Security > Automation; prompts on first AppleScript call in an active GUI session)
 

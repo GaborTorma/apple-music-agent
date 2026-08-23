@@ -83,7 +83,7 @@ Send a YouTube, SoundCloud, or Mixcloud link to your bot on Telegram. The bot wi
 
 1. Extract metadata and use AI to suggest clean artist, title, year, and filename
 2. Show confirmation with per-field edit buttons — accept with ✅ OK or edit individually
-3. Download the audio (original format) — retries up to 4 times on transient errors (YouTube intermittently returns HTTP 403 on the stream URL)
+3. Download the audio (original format) — retries up to 4 times on transient errors (YouTube intermittently returns HTTP 403 on the stream URL). If a retry is needed, yt-dlp is upgraded first (`brew upgrade yt-dlp`, at most every 6 hours) — a persistent 403 usually means yt-dlp is behind a YouTube change
 4. Convert to AAC m4a with dynamic bitrate calculation
 5. Add to Apple Music library
 6. Wait for iCloud Music Library sync (polls every 10s, max 20 min)
@@ -201,7 +201,8 @@ All settings — remote host included — come from `scripts/config.sh`; the `Ma
 │   │   └── mixcloud.py             # MixcloudDownloader
 │   └── services/
 │       ├── apple_music.py          # AppleScript integration
-│       └── ai_metadata.py          # OpenRouter AI metadata enrichment
+│       ├── ai_metadata.py          # OpenRouter AI metadata enrichment
+│       └── ytdlp_update.py         # yt-dlp upgrade after a failed download
 ├── .env.example
 └── requirements.txt
 ```

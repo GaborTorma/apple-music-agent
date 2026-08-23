@@ -118,7 +118,10 @@ def run(
             update_detail(f"{pct:.0f}%")
 
         try:
-            dl_result = dl.download(url, tmp_dir, on_progress=on_dl_progress, cancel_event=cancel_event)
+            dl_result = dl.download(
+                url, tmp_dir, on_progress=on_dl_progress, cancel_event=cancel_event,
+                on_notice=update_detail,
+            )
         except Exception:
             if cancel_event and cancel_event.is_set():
                 raise PipelineCancelled("Leállítva")
