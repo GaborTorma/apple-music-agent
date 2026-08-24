@@ -50,6 +50,7 @@ music_agent/
 - `add POSIX file` returns track reference → persistent ID extracted directly (no name-based search)
 - iCloud sync polling: 10s interval, 20 min timeout, continues on timeout
 - Pipeline cleans up temp dir only when `MUSIC_DIR` is set (file already moved out)
+- Re-running the same track is a no-op at three levels: the m4a in `MUSIC_DIR` (skip download+convert), the library track found by `apple_music.find_track_id(title, artist)` (skip `add POSIX file`), and the playlist entry matched by persistent ID (skip `duplicate`)
 - Both Mac Mini users run an agent against the same `MUSIC_DIR`, so before downloading the pipeline checks the target m4a: it exists → skip download+convert (bitrate read back with `ffprobe`); another agent holds `file_lock.TargetLock` on it → wait until the file appears or the lock is released, then reuse. Target name comes from `converter.target_path(filename_override or title_override)`, so two agents only dedup when the confirmed filename matches
 - Bot runs sync pipeline in `run_in_executor` to avoid blocking event loop
 - `get_downloader(url)` factory auto-selects downloader based on URL domain
@@ -66,6 +67,7 @@ music_agent/
 - yt-dlp output template uses `%(ext)s` — actual file found by scanning directory
 - YouTube returns `HTTP Error 403` on the stream URL two ways: intermittently (~1 in 3 downloads, a fresh invocation gets a new stream URL) and persistently for days when YouTube changes something a yt-dlp release has not caught up with. yt-dlp does **not** retry 4xx (its `--retries` only covers 5xx/transport), so `_download_audio` re-invokes yt-dlp itself: 4 attempts, 5/10/15s backoff, only for retryable output patterns, and it resumes the `.part` file
 - After a retryable download failure, `services/ytdlp_update.maybe_update()` upgrades yt-dlp (at most every 6h) and the next attempt starts immediately. `yt-dlp -U` refuses to update a Homebrew install (`_NON_UPDATEABLE_REASONS`), so the update goes through `brew update && brew upgrade yt-dlp` — ~8s when a new version exists
+- iCloud upload replaces the local `file track` with a `shared track` under a **new** persistent ID and no `location` (only 14 of 155 tracks on the Mac Mini are still file tracks). The ID from `add POSIX file` therefore dies mid-sync: `wait_for_icloud_sync` re-resolves it by name+artist and returns the current ID, and `add_to_playlist` matches `track`, not `file track` — the old filter failed with AppleScript `-1728`
 - Special chars in titles (& parentheses quotes) break AppleScript `whose name contains`. Avoid name-based search, use persistent ID instead
 - `file_lock` holds `.<name>.m4a.lock` next to the target: `O_CREAT|O_EXCL` to claim, mtime refreshed on every status tick, ignored (and taken over) after 10 min so a crashed run cannot block forever. Waiting stops as soon as the m4a appears — the holder keeps its lock through the 20 min iCloud sync
 - Automation permission required: Python 3.14 → Music.app (granted in System Settings > Privacy & Security > Automation; prompts on first AppleScript call in an active GUI session)
