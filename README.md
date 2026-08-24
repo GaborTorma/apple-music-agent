@@ -83,11 +83,12 @@ Send a YouTube, SoundCloud, or Mixcloud link to your bot on Telegram. The bot wi
 
 1. Extract metadata and use AI to suggest clean artist, title, year, and filename
 2. Show confirmation with per-field edit buttons — accept with ✅ OK or edit individually
-3. Download the audio (original format) — retries up to 4 times on transient errors (YouTube intermittently returns HTTP 403 on the stream URL). If a retry is needed, yt-dlp is upgraded first (`brew upgrade yt-dlp`, at most every 6 hours) — a persistent 403 usually means yt-dlp is behind a YouTube change
-4. Convert to AAC m4a with dynamic bitrate calculation
-5. Add to Apple Music library
-6. Wait for iCloud Music Library sync (polls every 10s, max 20 min)
-7. Add to the configured playlist
+3. Reuse the file if `MUSIC_DIR` already has it — or wait for it if the other agent is downloading it right now (steps 4-5 are then skipped)
+4. Download the audio (original format) — retries up to 4 times on transient errors (YouTube intermittently returns HTTP 403 on the stream URL). If a retry is needed, yt-dlp is upgraded first (`brew upgrade yt-dlp`, at most every 6 hours) — a persistent 403 usually means yt-dlp is behind a YouTube change
+5. Convert to AAC m4a with dynamic bitrate calculation
+6. Add to Apple Music library
+7. Wait for iCloud Music Library sync (polls every 10s, max 20 min)
+8. Add to the configured playlist
 
 Status updates are sent back via Telegram at each step.
 
@@ -194,6 +195,7 @@ All settings — remote host included — come from `scripts/config.sh`; the `Ma
 │   ├── bot.py                      # Telegram bot, multi-platform URL matching
 │   ├── pipeline.py                 # Orchestrator, downloader routing
 │   ├── converter.py                # ffmpeg wrapper, dynamic bitrate
+│   ├── file_lock.py                # cross-agent claim on a MUSIC_DIR file
 │   ├── downloaders/
 │   │   ├── __init__.py             # BaseDownloader, DownloadResult, factory
 │   │   ├── youtube.py              # YouTubeDownloader

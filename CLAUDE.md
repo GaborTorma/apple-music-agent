@@ -30,6 +30,7 @@ music_agent/
 ├── bot.py                 — Telegram bot, multi-platform URL matching
 ├── pipeline.py            — Orchestrator, temp dir, downloader routing
 ├── converter.py           — ffmpeg wrapper, dynamic bitrate, cover art
+├── file_lock.py           — cross-agent claim on a MUSIC_DIR target file
 ├── downloaders/
 │   ├── __init__.py        — BaseDownloader, DownloadResult, get_downloader()
 │   ├── youtube.py         — YouTubeDownloader
@@ -49,6 +50,7 @@ music_agent/
 - `add POSIX file` returns track reference → persistent ID extracted directly (no name-based search)
 - iCloud sync polling: 10s interval, 20 min timeout, continues on timeout
 - Pipeline cleans up temp dir only when `MUSIC_DIR` is set (file already moved out)
+- Both Mac Mini users run an agent against the same `MUSIC_DIR`, so before downloading the pipeline checks the target m4a: it exists → skip download+convert (bitrate read back with `ffprobe`); another agent holds `file_lock.TargetLock` on it → wait until the file appears or the lock is released, then reuse. Target name comes from `converter.target_path(filename_override or title_override)`, so two agents only dedup when the confirmed filename matches
 - Bot runs sync pipeline in `run_in_executor` to avoid blocking event loop
 - `get_downloader(url)` factory auto-selects downloader based on URL domain
 - AI metadata: OpenRouter chat/completions API (OpenAI-compatible JSON), no SDK needed. Graceful fallback if API key missing or request fails
@@ -65,6 +67,7 @@ music_agent/
 - YouTube returns `HTTP Error 403` on the stream URL two ways: intermittently (~1 in 3 downloads, a fresh invocation gets a new stream URL) and persistently for days when YouTube changes something a yt-dlp release has not caught up with. yt-dlp does **not** retry 4xx (its `--retries` only covers 5xx/transport), so `_download_audio` re-invokes yt-dlp itself: 4 attempts, 5/10/15s backoff, only for retryable output patterns, and it resumes the `.part` file
 - After a retryable download failure, `services/ytdlp_update.maybe_update()` upgrades yt-dlp (at most every 6h) and the next attempt starts immediately. `yt-dlp -U` refuses to update a Homebrew install (`_NON_UPDATEABLE_REASONS`), so the update goes through `brew update && brew upgrade yt-dlp` — ~8s when a new version exists
 - Special chars in titles (& parentheses quotes) break AppleScript `whose name contains`. Avoid name-based search, use persistent ID instead
+- `file_lock` holds `.<name>.m4a.lock` next to the target: `O_CREAT|O_EXCL` to claim, mtime refreshed on every status tick, ignored (and taken over) after 10 min so a crashed run cannot block forever. Waiting stops as soon as the m4a appears — the holder keeps its lock through the 20 min iCloud sync
 - Automation permission required: Python 3.14 → Music.app (granted in System Settings > Privacy & Security > Automation; prompts on first AppleScript call in an active GUI session)
 
 ## Commands

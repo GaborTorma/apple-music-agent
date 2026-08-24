@@ -38,8 +38,7 @@ def convert(
     if low_bitrate_warning:
         bitrate_kbps = config.MIN_BITRATE_KBPS
 
-    base_name = _safe_filename(filename) if filename else _safe_filename(title)
-    output_path = os.path.join(output_dir, f"{base_name}.m4a")
+    output_path = target_path(filename or title, output_dir)
 
     cmd = [
         "ffmpeg", "-y",
@@ -111,6 +110,24 @@ def convert(
         bitrate_kbps=bitrate_kbps,
         low_bitrate_warning=low_bitrate_warning,
     )
+
+
+def target_path(name: str, output_dir: str) -> str:
+    """Where convert() writes the m4a for this title/filename."""
+    return os.path.join(output_dir, f"{_safe_filename(name)}.m4a")
+
+
+def probe_bitrate(path: str) -> int:
+    """Audio bitrate of an existing file in kbps, 0 if it cannot be read."""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a:0",
+             "-show_entries", "stream=bit_rate", "-of", "default=nw=1:nk=1", path],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+        return round(int(result.stdout.strip()) / 1000)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return 0
 
 
 def _calculate_bitrate(duration_seconds: float) -> int:
