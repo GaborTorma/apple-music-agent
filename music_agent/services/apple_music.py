@@ -116,13 +116,17 @@ def remove_from_library(persistent_id: str) -> None:
 def add_to_playlist(persistent_id: str, playlist_name: str) -> None:
     """Add a track to a named playlist."""
     escaped_name = _escape(playlist_name)
+    # A playlist entry keeps the library track's persistent ID, so this stays a no-op
+    # when the track is already on the playlist
     script = f'''
     tell application "Music"
         set thePlaylist to (first user playlist whose name is "{escaped_name}")
-        tell library playlist 1
-            set libTrack to (first track whose persistent ID is "{persistent_id}")
-            duplicate libTrack to thePlaylist
-        end tell
+        if (count of (every track of thePlaylist whose persistent ID is "{persistent_id}")) is 0 then
+            tell library playlist 1
+                set libTrack to (first track whose persistent ID is "{persistent_id}")
+                duplicate libTrack to thePlaylist
+            end tell
+        end if
     end tell
     '''
     try:

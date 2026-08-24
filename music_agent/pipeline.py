@@ -212,7 +212,13 @@ def run(
 
         # Step 2: Add to Apple Music
         set_step(2)
-        persistent_id = apple_music.add_to_library(final_m4a)
+        # An earlier run (or the other agent's file) may already be in the library —
+        # adding it again would just create a second copy of the same track
+        persistent_id = apple_music.find_track_id(title, artist)
+        if persistent_id:
+            update_detail("már a könyvtárban")
+        else:
+            persistent_id = apple_music.add_to_library(final_m4a)
 
         # Step 3: Wait for iCloud sync
         set_step(3)
