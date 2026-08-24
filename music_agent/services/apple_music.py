@@ -1,16 +1,23 @@
+import logging
 import subprocess
 import time
 
 from music_agent import config
+
+logger = logging.getLogger(__name__)
 
 
 class AppleMusicError(Exception):
     pass
 
 
+def _escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def add_to_library(m4a_path: str) -> str:
     """Add an m4a file to Apple Music library. Returns the persistent ID of the track."""
-    escaped_path = m4a_path.replace("\\", "\\\\").replace('"', '\\"')
+    escaped_path = _escape(m4a_path)
     # Step 1: Add file and get persistent ID
     add_script = f'''
     tell application "Music"
@@ -27,35 +34,70 @@ def add_to_library(m4a_path: str) -> str:
     return persistent_id
 
 
+def find_track_id(name: str, artist: str) -> str | None:
+    """Persistent ID of the most recently added track with this name and artist."""
+    if not name:
+        return None
+    script = f'''
+    tell application "Music"
+        set matches to (every track of library playlist 1 whose name is "{_escape(name)}" and artist is "{_escape(artist)}")
+        if (count of matches) is 0 then return ""
+        set newest to item 1 of matches
+        repeat with t in matches
+            if (date added of t) > (date added of newest) then set newest to t
+        end repeat
+        return persistent ID of newest
+    end tell
+    '''
+    try:
+        return _run_applescript(script).strip() or None
+    except AppleMusicError as e:
+        logger.warning("Could not look up track '%s' by name: %s", name, e)
+        return None
+
+
 def wait_for_icloud_sync(
     persistent_id: str,
+    name: str = "",
+    artist: str = "",
     on_progress: 'Callable[[float, float], None] | None' = None,
     cancel_event: 'threading.Event | None' = None,
-) -> bool:
-    """Poll iCloud Music Library status. Returns True if synced, False if timed out.
+) -> tuple[bool, str]:
+    """Poll iCloud Music Library status.
+
+    Returns (synced, persistent_id). Uploading replaces the local file track with a
+    shared track under a new persistent ID, so the ID is re-resolved by name when the
+    original disappears — the returned one is what later steps must use.
 
     on_progress(elapsed_seconds, timeout_seconds) is called each poll cycle.
     """
-    import threading
     start = time.time()
     synced_statuses = {"matched", "uploaded", "purchased", "loaded"}
 
     while time.time() - start < config.ICLOUD_POLL_TIMEOUT_SECONDS:
         if cancel_event and cancel_event.is_set():
-            return False
+            return False, persistent_id
         elapsed = time.time() - start
         if on_progress:
             on_progress(elapsed, config.ICLOUD_POLL_TIMEOUT_SECONDS)
+
         status = _get_cloud_status(persistent_id)
+        if status == "not_found":
+            new_id = find_track_id(name, artist)
+            if new_id and new_id != persistent_id:
+                logger.info("Track %s was replaced by %s (iCloud upload)", persistent_id, new_id)
+                persistent_id = new_id
+                status = _get_cloud_status(persistent_id)
+
         if status and status.lower() in synced_statuses:
-            return True
+            return True, persistent_id
         # Sleep in small increments so cancel is responsive
         for _ in range(config.ICLOUD_POLL_INTERVAL_SECONDS):
             if cancel_event and cancel_event.is_set():
-                return False
+                return False, persistent_id
             time.sleep(1)
 
-    return False
+    return False, persistent_id
 
 
 def remove_from_library(persistent_id: str) -> None:
@@ -73,12 +115,12 @@ def remove_from_library(persistent_id: str) -> None:
 
 def add_to_playlist(persistent_id: str, playlist_name: str) -> None:
     """Add a track to a named playlist."""
-    escaped_name = playlist_name.replace("\\", "\\\\").replace('"', '\\"')
+    escaped_name = _escape(playlist_name)
     script = f'''
     tell application "Music"
         set thePlaylist to (first user playlist whose name is "{escaped_name}")
         tell library playlist 1
-            set libTrack to (first file track whose persistent ID is "{persistent_id}")
+            set libTrack to (first track whose persistent ID is "{persistent_id}")
             duplicate libTrack to thePlaylist
         end tell
     end tell

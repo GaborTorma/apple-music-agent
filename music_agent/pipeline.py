@@ -220,8 +220,9 @@ def run(
         def on_sync_progress(elapsed: float, timeout: float):
             update_detail(f"{_format_time(elapsed)} / {_format_time(timeout)}")
 
-        icloud_synced = apple_music.wait_for_icloud_sync(
-            persistent_id, on_progress=on_sync_progress, cancel_event=cancel_event,
+        # Uploading can replace the track under a new persistent ID — keep the current one
+        icloud_synced, persistent_id = apple_music.wait_for_icloud_sync(
+            persistent_id, title, artist, on_progress=on_sync_progress, cancel_event=cancel_event,
         )
 
         # If cancelled during sync, remove the track from Apple Music
