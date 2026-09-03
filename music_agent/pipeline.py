@@ -217,6 +217,7 @@ def run(
         # An earlier run (or the other agent's file) may already be in the library —
         # adding it again would just create a second copy of the same track
         persistent_id = apple_music.find_track_id(title, artist)
+        added_here = not persistent_id
         if persistent_id:
             update_detail("már a könyvtárban")
         else:
@@ -233,9 +234,11 @@ def run(
             persistent_id, title, artist, on_progress=on_sync_progress, cancel_event=cancel_event,
         )
 
-        # If cancelled during sync, remove the track from Apple Music
+        # If cancelled during sync, remove the track from Apple Music — unless it was
+        # already in the library before this run
         if cancel_event and cancel_event.is_set():
-            apple_music.remove_from_library(persistent_id)
+            if added_here:
+                apple_music.remove_from_library(persistent_id)
             raise PipelineCancelled("Leállítva")
 
         if not icloud_synced:
