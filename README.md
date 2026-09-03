@@ -88,7 +88,8 @@ Send a YouTube, SoundCloud, or Mixcloud link to your bot on Telegram. The bot wi
 5. Convert to AAC m4a with dynamic bitrate calculation
 6. Add to Apple Music library
 7. Wait for iCloud Music Library sync (polls every 10s, max 20 min)
-8. Add to the top of the configured playlist
+8. Add to the configured playlist
+9. Move it to the top of the playlist
 
 Status updates are sent back via Telegram at each step.
 

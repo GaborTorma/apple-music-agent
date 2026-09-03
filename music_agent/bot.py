@@ -304,7 +304,7 @@ async def _run_with_metadata(context, url, title, artist, year, filename, status
         sync_icon = "\n⚠️ iCloud sync timeout" if not result.icloud_synced else ""
         await original_msg.reply_text(
             f"✅ {result.artist} – {result.title}\n"
-            f"Hozzáadva: {config.PLAYLIST_NAME} | {result.bitrate_kbps} kbps"
+            f"A(z) {config.PLAYLIST_NAME} lista tetejére került | {result.bitrate_kbps} kbps"
             f"{sync_icon}"
         )
 

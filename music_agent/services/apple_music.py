@@ -115,37 +115,58 @@ def remove_from_library(persistent_id: str) -> None:
 
 
 # Two pipelines may run at once (the bot handles updates concurrently); their
-# rotations below would interleave inside Music and leave the new tracks mid-list
+# playlist scripts below would interleave inside Music and leave the new tracks mid-list
 _playlist_lock = threading.Lock()
 
 
 def add_to_playlist(persistent_id: str, playlist_name: str) -> None:
-    """Add a track to the top of a named playlist."""
+    """Append a track to a named playlist (no-op when it is already on it)."""
     escaped_name = _escape(playlist_name)
     # A playlist entry keeps the library track's persistent ID, so this stays a no-op
-    # when the track is already on the playlist.
+    # when the track is already on the playlist
+    script = f'''
+    tell application "Music"
+        set thePlaylist to (first user playlist whose name is "{escaped_name}")
+        if (count of (every track of thePlaylist whose persistent ID is "{persistent_id}")) is 0 then
+            tell library playlist 1
+                duplicate (first track whose persistent ID is "{persistent_id}") to thePlaylist
+            end tell
+        end if
+    end tell
+    '''
+    try:
+        with _playlist_lock:
+            _run_applescript(script)
+    except AppleMusicError as e:
+        raise AppleMusicError(
+            f"Nem sikerült hozzáadni a(z) '{playlist_name}' lejátszási listához: {e}"
+        ) from e
+
+
+def move_to_top(persistent_id: str, playlist_name: str) -> None:
+    """Move a track that is on the named playlist to its top."""
+    escaped_name = _escape(playlist_name)
     # `duplicate` always appends: Music ignores `to beginning of`, and `move` only
-    # honours `to end of` on playlist tracks (`index` is read-only). So the new entry
-    # is brought to the top by moving every earlier entry behind it, one by one.
-    # `move` never removes anything — a failure midway leaves the playlist rotated.
-    # `fixed indexing` makes `track N` follow the playlist's own order rather than
-    # the column the Music window happens to be sorted by. Music silently ignores
-    # unsupported locations, so the result is checked instead of trusted.
+    # honours `to end of` on playlist tracks (`index` is read-only). So the entry is
+    # moved to the end and then every other entry is moved behind it, one by one,
+    # which keeps the others in their old order. `move` never removes anything — a
+    # failure midway leaves the playlist rotated. `fixed indexing` makes
+    # `index`/`track N` follow the playlist's own order rather than the column the
+    # Music window happens to be sorted by. Music silently ignores unsupported
+    # locations, so the result is checked instead of trusted.
     script = f'''
     tell application "Music"
         set thePlaylist to (first user playlist whose name is "{escaped_name}")
         set fixed indexing to true
-        set atTop to true
-        if (count of (every track of thePlaylist whose persistent ID is "{persistent_id}")) is 0 then
-            set earlier to count of tracks of thePlaylist
-            tell library playlist 1
-                duplicate (first track whose persistent ID is "{persistent_id}") to thePlaylist
-            end tell
-            repeat earlier times
+        set n to count of tracks of thePlaylist
+        set theEntry to (first track of thePlaylist whose persistent ID is "{persistent_id}")
+        if (index of theEntry) is not 1 then
+            if (index of theEntry) is not n then move theEntry to end of thePlaylist
+            repeat (n - 1) times
                 move (track 1 of thePlaylist) to end of thePlaylist
             end repeat
-            set atTop to (persistent ID of track 1 of thePlaylist) is "{persistent_id}"
         end if
+        set atTop to (persistent ID of track 1 of thePlaylist) is "{persistent_id}"
         set fixed indexing to false
         return atTop
     end tell
@@ -155,11 +176,11 @@ def add_to_playlist(persistent_id: str, playlist_name: str) -> None:
             at_top = _run_applescript(script).strip()
     except AppleMusicError as e:
         raise AppleMusicError(
-            f"Nem sikerült hozzáadni a(z) '{playlist_name}' lejátszási listához: {e}"
+            f"A szám a(z) '{playlist_name}' lejátszási listán van, de nem sikerült a tetejére mozgatni: {e}"
         ) from e
     if at_top != "true":
         raise AppleMusicError(
-            f"A szám felkerült a(z) '{playlist_name}' lejátszási listára, de nem a tetejére"
+            f"A szám a(z) '{playlist_name}' lejátszási listán van, de nem került a tetejére"
         )
 
 

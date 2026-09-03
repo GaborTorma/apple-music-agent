@@ -35,6 +35,7 @@ STEPS = [
     "Hozzáadás az Apple Music-hoz",
     "Szinkronizálás az iCloud Music-ba",
     "Hozzáadás a lejátszási listához",
+    "Mozgatás a lista tetejére",
 ]
 
 
@@ -81,7 +82,7 @@ def run(
     filename_override: str | None = None,
     cancel_event: threading.Event | None = None,
 ) -> PipelineResult:
-    """Run the full pipeline: download → convert → add to Apple Music → playlist."""
+    """Run the full pipeline: download → convert → add to Apple Music → playlist → top."""
     header = f"{artist_override} – {title_override}" if artist_override and title_override else None
     current_step = 0
     step_detail = ""
@@ -95,9 +96,10 @@ def run(
         if on_status:
             on_status(_format_status(header, current_step, step_detail, completed))
 
-    def set_step(index: int, detail: str = ""):
+    def set_step(index: int, detail: str = "", cancellable: bool = True):
         nonlocal current_step, step_detail, completed
-        check_cancel()
+        if cancellable:
+            check_cancel()
         completed = index
         current_step = index
         step_detail = detail
@@ -242,6 +244,12 @@ def run(
         # Step 4: Add to playlist
         set_step(4)
         apple_music.add_to_playlist(persistent_id, config.PLAYLIST_NAME)
+
+        # Step 5: Move it to the top of the playlist — a re-sent track jumps up too.
+        # The track is on the playlist now, so a late cancel no longer stops the run:
+        # it would leave the track at the bottom under a "Leállítva" message
+        set_step(5, cancellable=False)
+        apple_music.move_to_top(persistent_id, config.PLAYLIST_NAME)
 
         # Mark all done
         completed = len(STEPS)
