@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import threading
 import time
 
 from music_agent import config
@@ -113,28 +114,53 @@ def remove_from_library(persistent_id: str) -> None:
     _run_applescript(script)
 
 
+# Two pipelines may run at once (the bot handles updates concurrently); their
+# rotations below would interleave inside Music and leave the new tracks mid-list
+_playlist_lock = threading.Lock()
+
+
 def add_to_playlist(persistent_id: str, playlist_name: str) -> None:
-    """Add a track to a named playlist."""
+    """Add a track to the top of a named playlist."""
     escaped_name = _escape(playlist_name)
     # A playlist entry keeps the library track's persistent ID, so this stays a no-op
-    # when the track is already on the playlist
+    # when the track is already on the playlist.
+    # `duplicate` always appends: Music ignores `to beginning of`, and `move` only
+    # honours `to end of` on playlist tracks (`index` is read-only). So the new entry
+    # is brought to the top by moving every earlier entry behind it, one by one.
+    # `move` never removes anything — a failure midway leaves the playlist rotated.
+    # `fixed indexing` makes `track N` follow the playlist's own order rather than
+    # the column the Music window happens to be sorted by. Music silently ignores
+    # unsupported locations, so the result is checked instead of trusted.
     script = f'''
     tell application "Music"
         set thePlaylist to (first user playlist whose name is "{escaped_name}")
+        set fixed indexing to true
+        set atTop to true
         if (count of (every track of thePlaylist whose persistent ID is "{persistent_id}")) is 0 then
+            set earlier to count of tracks of thePlaylist
             tell library playlist 1
-                set libTrack to (first track whose persistent ID is "{persistent_id}")
-                duplicate libTrack to thePlaylist
+                duplicate (first track whose persistent ID is "{persistent_id}") to thePlaylist
             end tell
+            repeat earlier times
+                move (track 1 of thePlaylist) to end of thePlaylist
+            end repeat
+            set atTop to (persistent ID of track 1 of thePlaylist) is "{persistent_id}"
         end if
+        set fixed indexing to false
+        return atTop
     end tell
     '''
     try:
-        _run_applescript(script)
+        with _playlist_lock:
+            at_top = _run_applescript(script).strip()
     except AppleMusicError as e:
         raise AppleMusicError(
             f"Nem sikerült hozzáadni a(z) '{playlist_name}' lejátszási listához: {e}"
         ) from e
+    if at_top != "true":
+        raise AppleMusicError(
+            f"A szám felkerült a(z) '{playlist_name}' lejátszási listára, de nem a tetejére"
+        )
 
 
 def _get_cloud_status(persistent_id: str) -> str | None:

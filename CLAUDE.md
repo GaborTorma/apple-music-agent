@@ -51,6 +51,7 @@ music_agent/
 - iCloud sync polling: 10s interval, 20 min timeout, continues on timeout
 - Pipeline cleans up temp dir only when `MUSIC_DIR` is set (file already moved out)
 - Re-running the same track is a no-op at three levels: the m4a in `MUSIC_DIR` (skip download+convert), the library track found by `apple_music.find_track_id(title, artist)` (skip `add POSIX file`), and the playlist entry matched by persistent ID (skip `duplicate`)
+- New playlist entries go to the **top** of the playlist: `duplicate` can only append, so `add_to_playlist` moves every earlier entry behind the new one (`move (track 1 of thePlaylist) to end of thePlaylist`, n times). ~1s inside Music (~4s wall with osascript startup) per 150 entries, far below the 60s osascript timeout; `move` never removes anything, so a failure midway leaves the playlist rotated. The script then checks that entry 1 is the new track and errors if not (Music ignores unsupported `move` locations silently). A process-wide lock keeps two concurrent pipelines from interleaving their rotations
 - Both Mac Mini users run an agent against the same `MUSIC_DIR`, so before downloading the pipeline checks the target m4a: it exists → skip download+convert (bitrate read back with `ffprobe`); another agent holds `file_lock.TargetLock` on it → wait until the file appears or the lock is released, then reuse. Target name comes from `converter.target_path(filename_override or title_override)`, so two agents only dedup when the confirmed filename matches
 - Bot runs sync pipeline in `run_in_executor` to avoid blocking event loop
 - `get_downloader(url)` factory auto-selects downloader based on URL domain
@@ -63,6 +64,7 @@ music_agent/
 
 - Apple Music `add` only adds to local library. iCloud upload starts automatically but takes ~2 min
 - JXA `duplicate` to user playlist fails. Use AppleScript `duplicate` within `tell library playlist 1`
+- Music can only move a playlist track to the **end**: `duplicate ... to beginning of`/`before track 1 of` still appends, `move ... to beginning of`/`before`/`after` are silently ignored or also append, `index` is read-only. `delete track N of user playlist` removes only the playlist entry. Without `fixed indexing` the AppleScript track order follows the column the Music window is sorted by; `set fixed indexing to true` switches it to the playlist's own (manual) order — verified with a title-sorted view
 - ffmpeg cover art must use `-c:v mjpeg` codec, not h264 (m4a container rejects h264)
 - yt-dlp output template uses `%(ext)s` — actual file found by scanning directory
 - YouTube returns `HTTP Error 403` on the stream URL two ways: intermittently (~1 in 3 downloads, a fresh invocation gets a new stream URL) and persistently for days when YouTube changes something a yt-dlp release has not caught up with. yt-dlp does **not** retry 4xx (its `--retries` only covers 5xx/transport), so `_download_audio` re-invokes yt-dlp itself: 4 attempts, 5/10/15s backoff, only for retryable output patterns, and it resumes the `.part` file
