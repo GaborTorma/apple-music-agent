@@ -72,7 +72,8 @@ music_agent/
 - iCloud upload replaces the local `file track` with a `shared track` under a **new** persistent ID and no `location` (only 14 of 155 tracks on the Mac Mini are still file tracks). The ID from `add POSIX file` therefore dies mid-sync: `wait_for_icloud_sync` re-resolves it by name+artist and returns the current ID, and `add_to_playlist` matches `track`, not `file track` — the old filter failed with AppleScript `-1728`
 - Special chars in titles (& parentheses quotes) break AppleScript `whose name contains`. Persistent ID stays the primary handle; the only name-based lookup is `find_track_id`, which uses `whose name is` with quotes and backslashes escaped by `_escape()`
 - `file_lock` holds `.<name>.m4a.lock` next to the target: `O_CREAT|O_EXCL` to claim, mtime refreshed on every status tick, ignored (and taken over) after 10 min so a crashed run cannot block forever. Waiting stops as soon as the m4a appears — the holder keeps its lock through the 20 min iCloud sync
-- Automation permission required: Python 3.14 → Music.app (granted in System Settings > Privacy & Security > Automation; prompts on first AppleScript call in an active GUI session)
+- Automation permission required: python3.14 → Music.app (granted in System Settings > Privacy & Security > Automation; prompts on first AppleScript call in an active GUI session — a background fast-user-switch session gets `-1743` with no prompt, so switch to that user to grant it)
+- The grant is tied to the interpreter's code identity. Homebrew's Python is ad-hoc signed (identifier = hash), so every rebuild — patch upgrade or a new bottle after a macOS update — silently lost it. The deployed agent therefore runs on a uv-managed CPython inside the install dir (`.python/`, exact patch from `.python-version`, `scripts/python-env.sh:ensure_venv`); it changes only when `.python-version` is bumped, which needs a new grant for both users. The pin must be a version uv can download (python-build-standalone lags Homebrew)
 
 ## Commands
 
@@ -84,11 +85,13 @@ source .venv/bin/activate && python3 run.py
 watchfiles "python run.py"
 
 # Install deps
-python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+uv venv --managed-python -p "$(cat .python-version)" && uv pip install -r requirements.txt
 
 # System deps
-brew install yt-dlp ffmpeg
+brew install uv yt-dlp ffmpeg
 ```
+
+- **Check**: none — no lint, typecheck, test or format tooling in the project
 
 ## Configuration
 

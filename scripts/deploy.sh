@@ -96,7 +96,8 @@ git -C "$INSTALL_DIR" pull --ff-only
 # --- Update dependencies ---
 
 info "Updating Python dependencies..."
-"$INSTALL_DIR/.venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt"
+source "$INSTALL_DIR/scripts/python-env.sh"
+ensure_venv
 
 # --- Restart service ---
 

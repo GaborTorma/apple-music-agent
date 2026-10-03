@@ -14,7 +14,7 @@ Telegram bot that downloads audio from YouTube, SoundCloud, and Mixcloud links, 
 ### Install system dependencies
 
 ```bash
-brew install yt-dlp ffmpeg
+brew install uv yt-dlp ffmpeg
 ```
 
 ## Setup
@@ -25,9 +25,8 @@ git clone https://github.com/gabortorma/apple-music-agent.git
 cd apple-music-agent
 
 # Virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv venv --managed-python -p "$(cat .python-version)"
+uv pip install -r requirements.txt
 
 # Configuration
 cp .env.example .env
@@ -37,7 +36,7 @@ cp .env.example .env
 
 The bot uses AppleScript to control Apple Music. Grant the following permission in **System Settings → Privacy & Security**:
 
-- **Automation**: Allow **Python 3.14** to control **Music**
+- **Automation**: Allow **python3.14** to control **Music** (again after each `.python-version` bump)
 
 The prompt appears automatically on first run — click "Allow".
 

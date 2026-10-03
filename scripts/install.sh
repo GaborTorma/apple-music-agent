@@ -120,7 +120,7 @@ if ! command -v brew &>/dev/null; then
 fi
 
 info "Checking system dependencies..."
-for pkg in python3 yt-dlp ffmpeg; do
+for pkg in yt-dlp ffmpeg; do
     if command -v "$pkg" &>/dev/null; then
         info "$pkg already installed"
     else
@@ -150,9 +150,8 @@ ln -sf "$RUN_SCRIPT" "$INSTALL_DIR/ai.torma.apple-music-agent"
 # --- Python venv ---
 
 info "Setting up Python virtual environment..."
-python3 -m venv "$INSTALL_DIR/.venv"
-"$INSTALL_DIR/.venv/bin/pip" install --quiet --upgrade pip
-"$INSTALL_DIR/.venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt"
+source "$INSTALL_DIR/scripts/python-env.sh"
+ensure_venv
 
 # --- .env configuration ---
 
@@ -257,7 +256,7 @@ echo "  app:    $LOG_DIR/agent.log (rotating)"
 echo "  stderr: $LOG_DIR/stderr.log (crashes)"
 echo ""
 echo "IMPORTANT — Grant this permission in System Settings > Privacy & Security:"
-echo "  Automation: allow Python 3.14 to control Music.app"
+echo "  Automation: allow python3.14 to control Music.app (again after each .python-version bump)"
 echo ""
 echo "Manage the service:"
 echo "  Restart: launchctl kickstart -k gui/$(id -u)/$SERVICE_LABEL"
