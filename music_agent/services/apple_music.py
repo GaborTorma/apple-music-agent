@@ -1,4 +1,5 @@
 import logging
+import re
 import subprocess
 import threading
 import time
@@ -118,15 +119,40 @@ def remove_from_library(persistent_id: str) -> None:
 # playlist scripts below would interleave inside Music and leave the new tracks mid-list
 _playlist_lock = threading.Lock()
 
+# iCloud can leave two playlists with the same name, and `first user playlist whose
+# name is` would then silently write into whichever Music lists first — not
+# necessarily the one the Watch syncs. So the playlist has to be unique by name
+_PLAYLIST_COUNT_ERROR = "playlist-count"
+
+
+def _select_playlist(playlist_name: str) -> str:
+    """AppleScript that sets `thePlaylist`, or errors unless exactly one has this name."""
+    return f'''
+        set matchingPlaylists to (every user playlist whose name is "{_escape(playlist_name)}")
+        if (count of matchingPlaylists) is not 1 then error "{_PLAYLIST_COUNT_ERROR}=" & (count of matchingPlaylists)
+        set thePlaylist to item 1 of matchingPlaylists'''
+
+
+def _playlist_count_error(playlist_name: str, e: AppleMusicError) -> AppleMusicError | None:
+    match = re.search(rf"{_PLAYLIST_COUNT_ERROR}=(\d+)", str(e))
+    if not match:
+        return None
+    count = int(match.group(1))
+    if count == 0:
+        return AppleMusicError(f"Nincs '{playlist_name}' nevű lejátszási lista")
+    return AppleMusicError(
+        f"{count} db '{playlist_name}' nevű lejátszási lista van — töröld a fölöslegeset, "
+        f"aztán küldd újra a linket"
+    )
+
 
 def add_to_playlist(persistent_id: str, playlist_name: str) -> None:
     """Append a track to a named playlist (no-op when it is already on it)."""
-    escaped_name = _escape(playlist_name)
     # A playlist entry keeps the library track's persistent ID, so this stays a no-op
     # when the track is already on the playlist
     script = f'''
     tell application "Music"
-        set thePlaylist to (first user playlist whose name is "{escaped_name}")
+        {_select_playlist(playlist_name)}
         if (count of (every track of thePlaylist whose persistent ID is "{persistent_id}")) is 0 then
             tell library playlist 1
                 duplicate (first track whose persistent ID is "{persistent_id}") to thePlaylist
@@ -138,14 +164,13 @@ def add_to_playlist(persistent_id: str, playlist_name: str) -> None:
         with _playlist_lock:
             _run_applescript(script)
     except AppleMusicError as e:
-        raise AppleMusicError(
+        raise _playlist_count_error(playlist_name, e) or AppleMusicError(
             f"Nem sikerült hozzáadni a(z) '{playlist_name}' lejátszási listához: {e}"
         ) from e
 
 
 def move_to_top(persistent_id: str, playlist_name: str) -> None:
     """Move a track that is on the named playlist to its top."""
-    escaped_name = _escape(playlist_name)
     # `duplicate` always appends: Music ignores `to beginning of`, and `move` only
     # honours `to end of` on playlist tracks (`index` is read-only). So the entry is
     # moved to the end and then every other entry is moved behind it, one by one,
@@ -156,7 +181,7 @@ def move_to_top(persistent_id: str, playlist_name: str) -> None:
     # locations, so the result is checked instead of trusted.
     script = f'''
     tell application "Music"
-        set thePlaylist to (first user playlist whose name is "{escaped_name}")
+        {_select_playlist(playlist_name)}
         set fixed indexing to true
         set n to count of tracks of thePlaylist
         set theEntry to (first track of thePlaylist whose persistent ID is "{persistent_id}")
@@ -175,7 +200,7 @@ def move_to_top(persistent_id: str, playlist_name: str) -> None:
         with _playlist_lock:
             at_top = _run_applescript(script).strip()
     except AppleMusicError as e:
-        raise AppleMusicError(
+        raise _playlist_count_error(playlist_name, e) or AppleMusicError(
             f"A szám a(z) '{playlist_name}' lejátszási listán van, de nem sikerült a tetejére mozgatni: {e}"
         ) from e
     if at_top != "true":
